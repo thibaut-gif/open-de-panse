@@ -6,6 +6,8 @@ const ADMIN_PASSWORD = "panseadmin2026";
 const SUPABASE_URL = "https://pvqzyysapstdozequtkw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_w7E0RSqEulwTpKLAwyjBow_J1wKlt2a";
 const SUPABASE_STATE_ID = "open-de-panse-2026";
+const LOGO_SRC = "open-de-panse-logo.png?v=4";
+const LOGO_FALLBACK_SRC = "assets/open-de-panse-logo.png?v=4";
 
 const icons = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>',
@@ -108,6 +110,26 @@ if (new URLSearchParams(window.location.search).has("reset")) {
   localStorage.removeItem(AUTH_KEY);
   localStorage.removeItem(ROLE_KEY);
   window.location.replace(window.location.pathname);
+}
+
+function logoAttrs() {
+  return `src="${LOGO_SRC}" onerror="this.onerror=null;this.src='${LOGO_FALLBACK_SRC}'"`;
+}
+
+function renderPreservingPosition() {
+  const y = window.scrollY;
+  const grid = document.querySelector(".score-grid-wrap");
+  const gridTop = grid?.scrollTop ?? 0;
+  const gridLeft = grid?.scrollLeft ?? 0;
+  render();
+  requestAnimationFrame(() => {
+    window.scrollTo(0, y);
+    const nextGrid = document.querySelector(".score-grid-wrap");
+    if (nextGrid) {
+      nextGrid.scrollTop = gridTop;
+      nextGrid.scrollLeft = gridLeft;
+    }
+  });
 }
 
 function createInitialState() {
@@ -332,7 +354,7 @@ function setGross(roundId, playerId, holeNumber, value, options = {}) {
 function setActiveScoreCell(roundId, playerId, holeNumber) {
   state.activeScoreCell = { roundId, playerId, holeNumber };
   saveLocalOnly();
-  render();
+  renderPreservingPosition();
 }
 
 function activeCellMatches(roundId, playerId, holeNumber) {
@@ -357,12 +379,12 @@ function advanceActiveScoreCell() {
       holeNumber: active.holeNumber,
     };
     saveLocalOnly();
-    render();
+    renderPreservingPosition();
     return;
   }
   if (window.matchMedia("(max-width: 820px)").matches) {
     saveLocalOnly();
-    render();
+    renderPreservingPosition();
     return;
   }
   const validate = document.querySelector(`[data-grid-validate="${active.holeNumber}"]`);
@@ -374,7 +396,7 @@ function advanceActiveScoreCell() {
     holeNumber: nextHole.number,
   } : null;
   saveLocalOnly();
-  render();
+  renderPreservingPosition();
 }
 
 function keypadScore(value) {
@@ -388,7 +410,7 @@ function clearActiveScore() {
   const active = state.activeScoreCell;
   if (!active) return;
   setGross(active.roundId, active.playerId, active.holeNumber, "", { localOnly: true });
-  render();
+  renderPreservingPosition();
 }
 
 function validateHole(roundId, groupId, holeNumber) {
@@ -520,7 +542,7 @@ function renderLogin() {
   return `
     <div class="login-screen">
       <div class="login-panel">
-        <img class="login-logo" src="open-de-panse-logo.png?v=3" alt="Logo Open de Panse" />
+        <img class="login-logo" ${logoAttrs()} alt="Logo Open de Panse" />
         <h1>Open de Panse</h1>
         <p>Accès réservé aux participants de l'édition 2026.</p>
         <form data-login-form>
@@ -592,7 +614,7 @@ function renderTopbar() {
     <header class="topbar">
       <div class="topbar-inner">
         <div class="brand-lockup">
-          <img class="brand-logo" src="assets/open-de-panse-logo.png?v=3" alt="Logo Open de Panse" />
+          <img class="brand-logo" ${logoAttrs()} alt="Logo Open de Panse" />
           <div class="brand">
             <h1>Open de Panse</h1>
             <span>Stableford net - 4 tours - MVP</span>
@@ -628,7 +650,7 @@ function renderHome() {
   return `
     <div class="hero">
       <div class="hero-main">
-        <img class="hero-logo" src="assets/open-de-panse-logo.png?v=3" alt="Logo Open de Panse" />
+        <img class="hero-logo" ${logoAttrs()} alt="Logo Open de Panse" />
         <div>
           <h2>Le scoring live de l'Open de Panse est prêt à prendre le départ.</h2>
           <p>Quatre tours réels, calcul WHS, Stableford net, alertes birdie et handicap Open de Panse mis à jour après validation.</p>
