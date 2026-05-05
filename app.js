@@ -140,6 +140,7 @@ function createInitialState() {
     selectedPlayerId: "p1",
     activeScoreCell: null,
     activeMobileHole: 1,
+    seenNotificationCount: 0,
     rounds: roundsSeed,
     courses: coursesSeed,
     players: playersSeed,
@@ -200,6 +201,7 @@ function applyRemoteState(data) {
     selectedPlayerId: state.selectedPlayerId,
     activeScoreCell: state.activeScoreCell,
     activeMobileHole: state.activeMobileHole,
+    seenNotificationCount: state.seenNotificationCount,
   };
   saveLocalOnly();
   isApplyingRemote = false;
@@ -436,13 +438,15 @@ function maybeNotifyUnderPar(roundId, playerId, holeNumber, gross) {
   if (existing) return;
   const player = state.players.find((item) => item.id === playerId);
   const round = state.rounds.find((item) => item.id === roundId);
+  const group = groupForPlayer(roundId, playerId);
   state.notifications.unshift({
     id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
     roundId,
     playerId,
     holeNumber,
     type,
-    message: `${player.name} · trou ${holeNumber} · ${labelForUnderPar(type)} brut`,
+    groupName: group?.name || "Partie non définie",
+    message: `${player.name} · ${group?.name || "Partie non définie"} · trou ${holeNumber} · ${labelForUnderPar(type)} brut`,
     detail: `Tour ${round.number} - ${course.name}`,
     createdAt: new Date().toLocaleString("fr-FR"),
   });
@@ -638,8 +642,13 @@ function renderTabs() {
     ["players", "Joueurs", icons.users],
     ["notifications", "Alertes", icons.bell],
   ];
+  const unreadAlerts = Math.max(0, state.notifications.length - (state.seenNotificationCount || 0));
   return `<nav class="tabs">${tabs.map(([id, label, icon]) => `
-    <button class="tab ${state.activeView === id ? "active" : ""}" data-view="${id}" title="${label}">${icon}${label}</button>
+    <button class="tab ${state.activeView === id ? "active" : ""} ${id === "notifications" && unreadAlerts ? "has-alerts" : ""}" data-view="${id}" title="${label}">
+      ${icon}
+      ${id === "notifications" && unreadAlerts ? `<span class="tab-badge">${unreadAlerts}</span>` : ""}
+      ${label}
+    </button>
   `).join("")}</nav>`;
 }
 
@@ -647,7 +656,14 @@ function renderHome() {
   const cumulative = sortedLeaderboard("cumulative");
   const leader = cumulative[0];
   const completedScores = Object.keys(state.scores).length;
+  const latestAlert = state.notifications[0];
   return `
+    ${latestAlert ? `
+      <div class="alert-banner">
+        <strong>${latestAlert.message}</strong>
+        <span>${latestAlert.detail} · ${latestAlert.createdAt}</span>
+      </div>
+    ` : ""}
     <div class="hero">
       <div class="hero-main">
         <img class="hero-logo" ${logoAttrs()} alt="Logo Open de Panse" />
@@ -1055,7 +1071,7 @@ function renderGroups() {
             <button class="btn" data-action="add-group">Ajouter une partie</button>
           ` : `<span class="tag blue">Parties créées par l'administrateur</span>`}
         </div>
-        ${unassigned.length ? `<p class="small"><strong>Non affectés :</strong> ${unassigned.map((player) => player.name).join(", ")}</p>` : `<p class="small positive"><strong>Tous les joueurs sont affectés à une partie.</strong></p>`}
+        ${isAdmin() && unassigned.length ? `<p class="small"><strong>Non affectés :</strong> ${unassigned.map((player) => player.name).join(", ")}</p>` : ""}
         <div class="cards group-list">
           ${groups.length ? groups.map((group, index) => renderGroupCard(group, index)).join("") : `<div class="empty">Aucune partie créée pour ce tour.</div>`}
         </div>
@@ -1075,6 +1091,7 @@ function renderGroupCard(group, index) {
         </div>
         ${isAdmin() ? `<button class="btn danger" data-remove-group="${group.id}">Supprimer</button>` : ""}
       </div>
+      ${isAdmin() ? `
       <div class="group-grid">
         <div class="field">
           <label>Nom</label>
@@ -1099,6 +1116,7 @@ function renderGroupCard(group, index) {
           </div>
         `).join("")}
       </div>
+      ` : ""}
       <div class="actions">
         <button class="btn primary" data-score-group="${group.id}">Saisir cette partie</button>
       </div>
@@ -1141,6 +1159,10 @@ function groupsForRound(roundId) {
   if (!state.groups) state.groups = createInitialGroups();
   if (!state.groups[roundId]) state.groups[roundId] = [];
   return state.groups[roundId];
+}
+
+function groupForPlayer(roundId, playerId) {
+  return groupsForRound(roundId).find((group) => group.playerIds.includes(playerId));
 }
 
 function playerName(playerId) {
@@ -1262,6 +1284,9 @@ function bindEvents() {
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
       state.activeView = button.dataset.view;
+      if (state.activeView === "notifications") {
+        state.seenNotificationCount = state.notifications.length;
+      }
       saveState();
       render();
     });
