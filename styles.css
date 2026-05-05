@@ -421,6 +421,62 @@ button {
   color: var(--red);
 }
 
+.home-ranking {
+  display: grid;
+  gap: 10px;
+}
+
+.home-ranking-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.home-ranking-tile {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8faf8;
+}
+
+.home-ranking-tile.positive {
+  border-color: #b9d8c7;
+  background: var(--green-soft);
+}
+
+.home-ranking-tile.negative {
+  border-color: #e4baba;
+  background: #fff0f0;
+}
+
+.home-ranking-tile strong {
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-ranking-tile div {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.home-ranking-tile small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.home-rank {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .cards {
   display: grid;
   gap: 10px;
@@ -518,56 +574,39 @@ button {
   font-weight: 800;
 }
 
-.scorecard-pan-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.icon-btn {
-  display: inline-grid;
-  place-items: center;
-  width: 42px;
-  height: 36px;
-  border: 1px solid #bdd2c6;
-  border-radius: 8px;
-  background: white;
-  color: var(--green);
-  font-size: 26px;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.scorecard-scroll {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: scroll;
-  overflow-y: hidden;
+.scorecard-nine {
   margin: 10px 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: white;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
-  touch-action: pan-x;
+  overflow: hidden;
+}
+
+.scorecard-nine-title {
+  padding: 8px;
+  background: #f2f5f1;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .scorecard-table {
-  width: max-content;
-  min-width: 860px;
+  width: 100%;
   border-collapse: collapse;
   background: white;
+  table-layout: fixed;
 }
 
 .scorecard-table th,
 .scorecard-table td {
-  min-width: 42px;
-  padding: 8px;
+  padding: 6px 2px;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   text-align: center;
   white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.05;
 }
 
 .scorecard-table th,
@@ -1002,6 +1041,44 @@ button {
 
   .controls {
     grid-template-columns: 1fr;
+  }
+
+  .home-ranking-row {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 5px;
+  }
+
+  .home-ranking-tile {
+    padding: 7px 4px;
+  }
+
+  .home-ranking-tile strong {
+    font-size: 11px;
+  }
+
+  .home-ranking-tile div {
+    font-size: 18px;
+  }
+
+  .player-card {
+    padding: 8px;
+  }
+
+  .player-scorecard {
+    padding: 8px 6px;
+  }
+
+  .scorecard-nine-title {
+    padding: 6px;
+    font-size: 10px;
+  }
+
+  .scorecard-table th,
+  .scorecard-table td {
+    padding: 5px 1px;
+    font-size: 10px;
+    letter-spacing: 0;
   }
 
   .mobile-hole-entry {

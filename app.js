@@ -1243,7 +1243,7 @@ function renderScorecardNine(label, cells) {
           <tr>
             <th>Trou</th>
             ${cells.map((cell) => `<th>${cell.hole.number}</th>`).join("")}
-            <th>Total</th>
+            <th>Tot</th>
           </tr>
           <tr>
             <td>Par</td>
