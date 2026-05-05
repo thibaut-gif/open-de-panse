@@ -3,9 +3,11 @@ const AUTH_KEY = "open-de-panse-auth-v1";
 const ROLE_KEY = "open-de-panse-role-v1";
 const PARTICIPANT_PASSWORD = "panse2026";
 const ADMIN_PASSWORD = "panseadmin2026";
+const CLIENT_ID_KEY = "open-de-panse-client-id-v1";
 const SUPABASE_URL = "https://pvqzyysapstdozequtkw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_w7E0RSqEulwTpKLAwyjBow_J1wKlt2a";
 const SUPABASE_STATE_ID = "open-de-panse-2026";
+const SYNC_POLL_MS = 2500;
 const LOGO_SRC = "open-de-panse-logo.png?v=4";
 const LOGO_FALLBACK_SRC = "assets/open-de-panse-logo.png?v=4";
 
@@ -127,7 +129,10 @@ let currentRole = localStorage.getItem(ROLE_KEY) || "participant";
 let remoteReady = false;
 let isApplyingRemote = false;
 let syncTimer = null;
+let remotePollTimer = null;
+let remoteLastSeenAt = 0;
 const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY);
+const clientId = getClientId();
 
 if (new URLSearchParams(window.location.search).has("reset")) {
   localStorage.removeItem(AUTH_KEY);
@@ -137,6 +142,14 @@ if (new URLSearchParams(window.location.search).has("reset")) {
 
 function logoAttrs() {
   return `src="${LOGO_SRC}" onerror="this.onerror=null;this.src='${LOGO_FALLBACK_SRC}'"`;
+}
+
+function getClientId() {
+  const saved = localStorage.getItem(CLIENT_ID_KEY);
+  if (saved) return saved;
+  const next = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+  localStorage.setItem(CLIENT_ID_KEY, next);
+  return next;
 }
 
 function renderPreservingPosition() {
@@ -203,6 +216,8 @@ function saveLocalOnly() {
 
 function publicState() {
   return {
+    syncUpdatedAt: Date.now(),
+    syncClientId: clientId,
     rounds: state.rounds,
     courses: state.courses,
     players: state.players,
@@ -216,6 +231,9 @@ function publicState() {
 
 function applyRemoteState(data) {
   if (!data || typeof data !== "object") return;
+  const incomingUpdatedAt = Number(data.syncUpdatedAt || 0);
+  if (incomingUpdatedAt && incomingUpdatedAt <= remoteLastSeenAt) return;
+  if (incomingUpdatedAt) remoteLastSeenAt = incomingUpdatedAt;
   isApplyingRemote = true;
   state = {
     ...state,
@@ -229,6 +247,7 @@ function applyRemoteState(data) {
     seenNotificationCount: state.seenNotificationCount,
   };
   state.players = normalizePlayers(state.players);
+  remoteReady = true;
   saveLocalOnly();
   isApplyingRemote = false;
   render();
@@ -242,10 +261,21 @@ function scheduleRemoteSave() {
 
 async function saveRemoteState() {
   if (!supabaseClient || isApplyingRemote || !isAuthenticated) return;
+  const payload = publicState();
+  remoteLastSeenAt = payload.syncUpdatedAt;
   const { error } = await supabaseClient
     .from("app_state")
-    .upsert({ id: SUPABASE_STATE_ID, data: publicState() });
-  if (error) console.warn("Supabase save failed", error);
+    .upsert({ id: SUPABASE_STATE_ID, data: payload });
+  if (error) {
+    const wasRemoteReady = remoteReady;
+    remoteReady = false;
+    console.warn("Supabase save failed", error);
+    if (wasRemoteReady) render();
+    return;
+  }
+  const wasRemoteReady = remoteReady;
+  remoteReady = true;
+  if (!wasRemoteReady) render();
 }
 
 async function loadRemoteState() {
@@ -256,7 +286,10 @@ async function loadRemoteState() {
     .eq("id", SUPABASE_STATE_ID)
     .single();
   if (error) {
+    const wasRemoteReady = remoteReady;
+    remoteReady = false;
     console.warn("Supabase load failed", error);
+    if (wasRemoteReady) render();
     return;
   }
   if (data?.data && Object.keys(data.data).length) {
@@ -280,6 +313,12 @@ function subscribeRemoteState() {
       if (payload.new?.data) applyRemoteState(payload.new.data);
     })
     .subscribe();
+}
+
+function startRemotePolling() {
+  if (!supabaseClient || !isAuthenticated) return;
+  clearInterval(remotePollTimer);
+  remotePollTimer = setInterval(loadRemoteState, SYNC_POLL_MS);
 }
 
 function courseForRound(roundId) {
@@ -649,6 +688,7 @@ async function startRemoteSync() {
   if (!supabaseClient || !isAuthenticated) return;
   await loadRemoteState();
   subscribeRemoteState();
+  startRemotePolling();
   render();
 }
 
@@ -1431,6 +1471,8 @@ function bindEvents() {
       isAuthenticated = false;
       currentRole = "participant";
       remoteReady = false;
+      clearInterval(remotePollTimer);
+      clearTimeout(syncTimer);
       render();
     });
   });
