@@ -604,6 +604,60 @@ function sortedLeaderboard(mode = "round") {
   }).sort((a, b) => b.stats.points - a.stats.points || b.stats.holesPlayed - a.stats.holesPlayed || a.stats.grossTotal - b.stats.grossTotal);
 }
 
+function grossSouterrainesStats(player) {
+  const stats = {
+    grossTotal: 0,
+    relative: 0,
+    holesPlayed: 0,
+    birdies: 0,
+    pars: 0,
+    bogeys: 0,
+    doubles: 0,
+    triples: 0,
+    quadruples: 0,
+  };
+  state.rounds.forEach((round) => {
+    const course = courseForRound(round.id);
+    course.holes.forEach((hole) => {
+      const gross = getGross(round.id, player.id, hole.number);
+      if (!gross) return;
+      const diff = gross - hole.par;
+      stats.grossTotal += gross;
+      stats.relative += diff;
+      stats.holesPlayed += 1;
+      if (diff === -1) stats.birdies += 1;
+      if (diff === 0) stats.pars += 1;
+      if (diff === 1) stats.bogeys += 1;
+      if (diff === 2) stats.doubles += 1;
+      if (diff === 3) stats.triples += 1;
+      if (diff === 4) stats.quadruples += 1;
+    });
+  });
+  return stats;
+}
+
+function souterrainesRows() {
+  return state.players.map((player) => ({
+    player,
+    stats: grossSouterrainesStats(player),
+  }));
+}
+
+function sortedGrossRows() {
+  return souterrainesRows().sort((a, b) => (
+    a.stats.relative - b.stats.relative ||
+    b.stats.holesPlayed - a.stats.holesPlayed ||
+    a.stats.grossTotal - b.stats.grossTotal
+  ));
+}
+
+function topSouterrainesRows(key) {
+  return souterrainesRows()
+    .filter((row) => row.stats[key] > 0)
+    .sort((a, b) => b.stats[key] - a.stats[key] || a.stats.relative - b.stats.relative)
+    .slice(0, 3);
+}
+
 function formatRelative(value) {
   if (!value) return "E";
   return value > 0 ? `+${value}` : String(value);
@@ -624,6 +678,7 @@ function render() {
         <section class="view ${state.activeView === "score" ? "active" : ""}">${renderScoreEntry()}</section>
         <section class="view ${state.activeView === "groups" ? "active" : ""}">${renderGroups()}</section>
         <section class="view ${state.activeView === "players" ? "active" : ""}">${renderPlayers()}</section>
+        <section class="view ${state.activeView === "underground" ? "active" : ""}">${renderUnderground()}</section>
         <section class="view ${state.activeView === "notifications" ? "active" : ""}">${renderNotifications()}</section>
       </main>
       ${renderTabs()}
@@ -731,6 +786,7 @@ function renderTabs() {
     ["score", "Scores", icons.pencil],
     ["groups", "Parties", icons.groups],
     ["players", "Joueurs", icons.users],
+    ["underground", "Souterraines", icons.trophy],
     ["notifications", "Alertes", icons.bell],
   ];
   const unreadAlerts = Math.max(0, state.notifications.length - (state.seenNotificationCount || 0));
@@ -821,10 +877,12 @@ function renderHomeRankingSnapshot(cumulative) {
   const bottomThree = cumulative.slice(-3).reverse();
   return `
     <div class="home-ranking">
-      <div class="home-ranking-row">
+      <div class="home-ranking-column">
+        <div class="home-ranking-heading positive">Top 3</div>
         ${topThree.map((row, index) => renderHomeRankingTile(row, index + 1, "positive")).join("")}
       </div>
-      <div class="home-ranking-row">
+      <div class="home-ranking-column">
+        <div class="home-ranking-heading negative">Derniers</div>
         ${bottomThree.map((row, index) => renderHomeRankingTile(row, cumulative.length - index, "negative")).join("")}
       </div>
     </div>
@@ -905,6 +963,76 @@ function renderLeaderboardTable(rows) {
         `).join("")}
       </tbody>
     </table>
+  `;
+}
+
+function renderUnderground() {
+  const topBlocks = [
+    ["birdies", "Birdies"],
+    ["pars", "Pars"],
+    ["bogeys", "Bogeys"],
+    ["doubles", "Doubles bogeys"],
+    ["triples", "Triples bogeys"],
+    ["quadruples", "Quadruples bogeys"],
+  ];
+  return `
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">Souterraines</h3>
+          <p class="panel-subtitle">Classements bruts et statistiques de coups sur tous les tours</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        ${renderGrossLeaderboard()}
+      </div>
+    </div>
+    <div class="underground-grid">
+      ${topBlocks.map(([key, label]) => renderUndergroundTop(key, label)).join("")}
+    </div>
+  `;
+}
+
+function renderGrossLeaderboard() {
+  const rows = sortedGrossRows();
+  return `
+    <table class="leaderboard underground-table">
+      <thead><tr><th>#</th><th>Joueur</th><th>Brut</th><th>Par</th><th>Trous</th></tr></thead>
+      <tbody>
+        ${rows.map((row, index) => `
+          <tr>
+            <td class="rank">${index + 1}</td>
+            <td><div class="player-name">${row.player.name}</div></td>
+            <td><span class="score-big">${row.stats.grossTotal || "-"}</span></td>
+            <td class="${row.stats.relative <= 0 ? "positive" : "negative"}">${row.stats.holesPlayed ? formatRelative(row.stats.relative) : "-"}</td>
+            <td>${row.stats.holesPlayed}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderUndergroundTop(key, label) {
+  const rows = topSouterrainesRows(key);
+  return `
+    <div class="panel underground-card">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">${label}</h3>
+          <p class="panel-subtitle">Top 3 cumulé</p>
+        </div>
+      </div>
+      <div class="panel-body cards">
+        ${rows.length ? rows.map((row, index) => `
+          <div class="underground-rank">
+            <span class="rank">#${index + 1}</span>
+            <strong>${row.player.name}</strong>
+            <span class="score-big">${row.stats[key]}</span>
+          </div>
+        `).join("") : `<div class="empty">Aucun score pour l'instant.</div>`}
+      </div>
+    </div>
   `;
 }
 
@@ -1232,9 +1360,6 @@ function renderPlayerScorecard(player, roundId) {
 }
 
 function renderScorecardNine(label, cells) {
-  const parTotal = cells.reduce((sum, cell) => sum + cell.hole.par, 0);
-  const grossTotal = cells.reduce((sum, cell) => sum + (Number(cell.gross) || 0), 0);
-  const pointsTotal = cells.reduce((sum, cell) => sum + (Number(cell.points) || 0), 0);
   return `
     <div class="scorecard-nine">
       <div class="scorecard-nine-title">${label}</div>
@@ -1243,22 +1368,18 @@ function renderScorecardNine(label, cells) {
           <tr>
             <th>Trou</th>
             ${cells.map((cell) => `<th>${cell.hole.number}</th>`).join("")}
-            <th>Tot</th>
           </tr>
           <tr>
             <td>Par</td>
             ${cells.map((cell) => `<td>${cell.hole.par}</td>`).join("")}
-            <td>${parTotal}</td>
           </tr>
           <tr>
             <td>Brut</td>
             ${cells.map((cell) => `<td>${cell.gross || "-"}</td>`).join("")}
-            <td>${grossTotal || "-"}</td>
           </tr>
           <tr>
             <td>Net</td>
             ${cells.map((cell) => `<td>${cell.points ?? "-"}</td>`).join("")}
-            <td>${pointsTotal || "-"}</td>
           </tr>
         </tbody>
       </table>
