@@ -459,6 +459,96 @@ button {
   max-width: 220px;
 }
 
+.handicap-history {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.history-grid {
+  display: grid;
+  grid-template-columns: 0.7fr 1fr 0.8fr 1fr;
+  gap: 0;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.history-grid span {
+  padding: 8px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.history-grid span:nth-child(-n + 4) {
+  background: #f2f5f1;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.player-scorecards {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.player-scorecard {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #ffffff;
+}
+
+.player-scorecard summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--green);
+  font-weight: 900;
+}
+
+.scorecard-status {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scorecard-scroll {
+  width: 100%;
+  overflow-x: auto;
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.scorecard-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  background: white;
+}
+
+.scorecard-table th,
+.scorecard-table td {
+  padding: 8px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.scorecard-table th,
+.scorecard-table td:first-child {
+  background: #f2f5f1;
+  color: var(--muted);
+  font-weight: 900;
+}
+
 .group-slots {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }

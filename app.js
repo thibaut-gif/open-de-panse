@@ -22,16 +22,39 @@ const playersSeed = [
   ["p1", "Juju", 13],
   ["p2", "Thib", 10],
   ["p3", "Goulu", 20],
-  ["p4", "Gege", 38],
+  ["p4", "Gege", 20],
   ["p5", "Nanou", 21],
-  ["p6", "Pierrot", 47],
+  ["p6", "Pierrot", 29],
   ["p7", "Lutcho", 24],
   ["p8", "Nonoz", 28],
-  ["p9", "Ben", 26],
-  ["p10", "Manu", 41],
-  ["p11", "La Roquette", 33],
+  ["p9", "Ben", 23],
+  ["p10", "Manu", 42],
+  ["p11", "La Roquette", 32],
   ["p12", "Greg'z", 16],
-].map(([id, name, handicap]) => ({ id, name, handicap }));
+].map(([id, name, handicap]) => ({ id, name, handicap, initialHandicap: handicap }));
+
+const previousSeedHandicaps = {
+  p4: 38,
+  p6: 47,
+  p9: 26,
+  p10: 41,
+  p11: 33,
+};
+
+function normalizePlayers(players) {
+  return (players || playersSeed).map((player) => {
+    const seed = playersSeed.find((item) => item.id === player.id || item.name === player.name);
+    const initialHandicap = seed?.initialHandicap ?? player.initialHandicap ?? player.handicap;
+    const savedHandicap = Number(player.handicap);
+    const previousSeed = previousSeedHandicaps[player.id];
+    const handicap = previousSeed !== undefined && savedHandicap === previousSeed ? seed.handicap : savedHandicap;
+    return {
+      ...player,
+      handicap: Number.isNaN(handicap) ? Number(initialHandicap) : handicap,
+      initialHandicap: Number(initialHandicap),
+    };
+  });
+}
 
 function makeHoles(pars, sis) {
   return pars.map((par, index) => ({ number: index + 1, par, strokeIndex: sis[index] }));
@@ -143,7 +166,7 @@ function createInitialState() {
     seenNotificationCount: 0,
     rounds: roundsSeed,
     courses: coursesSeed,
-    players: playersSeed,
+    players: normalizePlayers(playersSeed),
     groups: createInitialGroups(),
     scores: {},
     validatedHoles: {},
@@ -161,7 +184,9 @@ function loadState() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return createInitialState();
     const parsed = JSON.parse(saved);
-    return { ...createInitialState(), ...parsed };
+    const nextState = { ...createInitialState(), ...parsed };
+    nextState.players = normalizePlayers(nextState.players);
+    return nextState;
   } catch {
     return createInitialState();
   }
@@ -203,6 +228,7 @@ function applyRemoteState(data) {
     activeMobileHole: state.activeMobileHole,
     seenNotificationCount: state.seenNotificationCount,
   };
+  state.players = normalizePlayers(state.players);
   saveLocalOnly();
   isApplyingRemote = false;
   render();
@@ -292,6 +318,16 @@ function teeForPlayer(player, course) {
 function courseHandicap(player, course) {
   const tee = teeForPlayer(player, course);
   return roundHalfUp(player.handicap * tee.slope / 113 + tee.rating - tee.par);
+}
+
+function handicapBeforeRound(player, roundId) {
+  let current = player.initialHandicap ?? player.handicap;
+  for (const round of state.rounds) {
+    if (round.id === roundId) return current;
+    const stats = playerRoundStatsFromHandicap(player, round.id, current);
+    if (state.validatedRounds[round.id] && stats.handicapAfter !== null) current = stats.handicapAfter;
+  }
+  return current;
 }
 
 function strokesOnHole(courseHandicapValue, strokeIndex) {
@@ -462,8 +498,13 @@ function labelForUnderPar(type) {
 }
 
 function playerRoundStats(player, roundId) {
+  return playerRoundStatsFromHandicap(player, roundId, handicapBeforeRound(player, roundId));
+}
+
+function playerRoundStatsFromHandicap(player, roundId, handicap) {
   const course = courseForRound(roundId);
-  const handicapValue = courseHandicap(player, course);
+  const playerForRound = { ...player, handicap };
+  const handicapValue = courseHandicap(playerForRound, course);
   let points = 0;
   let grossTotal = 0;
   let holesPlayed = 0;
@@ -482,7 +523,7 @@ function playerRoundStats(player, roundId) {
     if (underParType(hole.par, gross)) underPar += 1;
   });
 
-  const handicapAfter = player.handicap - ((points - 36) * 0.5);
+  const handicapAfter = handicap - ((points - 36) * 0.5);
   return {
     points,
     grossTotal,
@@ -491,7 +532,7 @@ function playerRoundStats(player, roundId) {
     underPar,
     handicapValue,
     handicapAfter: holesPlayed === course.holes.length ? Math.max(0, Number(handicapAfter.toFixed(1))) : null,
-    tee: teeForPlayer(player, course),
+    tee: teeForPlayer(playerForRound, course),
   };
 }
 
@@ -1021,12 +1062,13 @@ function renderPlayers() {
       <div class="panel-body cards">
         ${state.players.map((player) => {
           const stats = playerRoundStats(player, round.id);
+          const initialHandicap = player.initialHandicap ?? player.handicap;
           return `
             <div class="player-card">
               <div class="card-top">
                 <div>
                   <strong>${player.name}</strong>
-                  <div class="small">Handicap Open de Panse ${player.handicap.toFixed(1)}</div>
+                  <div class="small">Handicap actuel ${player.handicap.toFixed(1)} · initial ${initialHandicap.toFixed(1)}</div>
                   <div class="small">${course.name} · ${stats.tee.label} · slope ${stats.tee.slope}</div>
                 </div>
                 <span class="tag green">${stats.handicapValue} CR</span>
@@ -1037,14 +1079,102 @@ function renderPlayers() {
                   <input type="tel" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" autocomplete="off" value="${player.handicap.toFixed(1)}" data-player-handicap="${player.id}" ${isAdmin() ? "" : "readonly"} />
                 </div>
               </div>
-              <div class="actions">
-                <button class="btn" data-player-score="${player.id}">Saisir</button>
-              </div>
+              ${renderHandicapHistory(player)}
+              ${renderPlayerScorecards(player)}
             </div>
           `;
         }).join("")}
       </div>
     </div>
+  `;
+}
+
+function renderHandicapHistory(player) {
+  let current = player.initialHandicap ?? player.handicap;
+  let previousRoundValidated = true;
+  return `
+    <div class="handicap-history">
+      <strong>Evolution handicap</strong>
+      <div class="history-grid">
+        <span>Tour</span><span>Avant</span><span>Pts</span><span>Après</span>
+        ${state.rounds.map((round) => {
+          const isValidated = Boolean(state.validatedRounds[round.id]);
+          const before = previousRoundValidated ? current : null;
+          const stats = before !== null ? playerRoundStatsFromHandicap(player, round.id, before) : null;
+          const after = isValidated && stats && stats.handicapAfter !== null ? stats.handicapAfter : null;
+          if (after !== null) current = after;
+          previousRoundValidated = isValidated && after !== null;
+          const points = isValidated && stats?.holesPlayed ? stats.points : "-";
+          return `
+            <span>T${round.number}</span>
+            <span>${before !== null ? before.toFixed(1) : "-"}</span>
+            <span>${points}</span>
+            <span>${after !== null ? after.toFixed(1) : "-"}</span>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderPlayerScorecards(player) {
+  return `
+    <div class="player-scorecards">
+      <strong>Cartes de score</strong>
+      ${state.rounds.map((round) => renderPlayerScorecard(player, round.id)).join("")}
+    </div>
+  `;
+}
+
+function renderPlayerScorecard(player, roundId) {
+  const round = state.rounds.find((item) => item.id === roundId);
+  const course = courseForRound(roundId);
+  const stats = playerRoundStats(player, roundId);
+  const cells = course.holes.map((hole) => {
+    const gross = getGross(roundId, player.id, hole.number);
+    const strokes = strokesOnHole(stats.handicapValue, hole.strokeIndex);
+    const points = stablefordPoints(hole.par, gross, strokes);
+    return { hole, gross, points };
+  });
+  const parTotal = cells.reduce((sum, cell) => sum + cell.hole.par, 0);
+  const grossTotal = cells.reduce((sum, cell) => sum + (Number(cell.gross) || 0), 0);
+  const pointsTotal = cells.reduce((sum, cell) => sum + (Number(cell.points) || 0), 0);
+  const isValidated = Boolean(state.validatedRounds[roundId]);
+  const status = isValidated ? "validé" : stats.holesPlayed ? `${stats.holesPlayed}/${course.holes.length} trous` : "à venir";
+  return `
+    <details class="player-scorecard">
+      <summary>
+        <span>Tour ${round.number} · ${course.name}</span>
+        <span class="scorecard-status">${status}</span>
+      </summary>
+      <div class="scorecard-scroll">
+        <table class="scorecard-table">
+          <tbody>
+            <tr>
+              <th>Trou</th>
+              ${cells.map((cell) => `<th>${cell.hole.number}</th>`).join("")}
+              <th>Total</th>
+            </tr>
+            <tr>
+              <td>Par</td>
+              ${cells.map((cell) => `<td>${cell.hole.par}</td>`).join("")}
+              <td>${parTotal}</td>
+            </tr>
+            <tr>
+              <td>Brut</td>
+              ${cells.map((cell) => `<td>${cell.gross || "-"}</td>`).join("")}
+              <td>${grossTotal || "-"}</td>
+            </tr>
+            <tr>
+              <td>Pts</td>
+              ${cells.map((cell) => `<td>${cell.points ?? "-"}</td>`).join("")}
+              <td>${pointsTotal || "-"}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="small">Brut ${grossTotal || "-"} · Stableford ${pointsTotal || "-"} pts · ${stats.holesPlayed}/${course.holes.length} trous</div>
+    </details>
   `;
 }
 
@@ -1274,7 +1404,7 @@ function resetScores() {
   state.scores = {};
   state.validatedHoles = {};
   state.notifications = [];
-  state.players = playersSeed.map((player) => ({ ...player }));
+  state.players = normalizePlayers(playersSeed);
   state.validatedRounds = {};
   saveState();
   render();
@@ -1414,15 +1544,6 @@ function bindEvents() {
     });
   });
 
-  document.querySelectorAll("[data-player-score]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.selectedPlayerId = button.dataset.playerScore;
-      state.activeView = "score";
-      saveState();
-      render();
-    });
-  });
-
   document.querySelectorAll("[data-player-handicap]").forEach((input) => {
     input.addEventListener("change", () => {
       if (!isAdmin()) return requireAdminMessage();
@@ -1431,8 +1552,9 @@ function bindEvents() {
         render();
         return;
       }
+      const handicap = Number(value.toFixed(1));
       state.players = state.players.map((player) => (
-        player.id === input.dataset.playerHandicap ? { ...player, handicap: Number(value.toFixed(1)) } : player
+        player.id === input.dataset.playerHandicap ? { ...player, handicap, initialHandicap: handicap } : player
       ));
       saveState();
       render();
