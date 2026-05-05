@@ -1,6 +1,11 @@
 const STORAGE_KEY = "open-de-panse-mvp-state-v3";
 const AUTH_KEY = "open-de-panse-auth-v1";
-const APP_PASSWORD = "panse2026";
+const ROLE_KEY = "open-de-panse-role-v1";
+const PARTICIPANT_PASSWORD = "panse2026";
+const ADMIN_PASSWORD = "panseadmin2026";
+const SUPABASE_URL = "https://pvqzyysapstdozequtkw.supabase.co";
+const SUPABASE_KEY = "sb_publishable_w7E0RSqEulwTpKLAwyjBow_J1wKlt2a";
+const SUPABASE_STATE_ID = "open-de-panse-2026";
 
 const icons = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>',
@@ -93,6 +98,11 @@ const roundsSeed = [
 
 let state = loadState();
 let isAuthenticated = localStorage.getItem(AUTH_KEY) === "ok";
+let currentRole = localStorage.getItem(ROLE_KEY) || "participant";
+let remoteReady = false;
+let isApplyingRemote = false;
+let syncTimer = null;
+const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 function createInitialState() {
   return {
@@ -128,6 +138,88 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleRemoteSave();
+}
+
+function saveLocalOnly() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function publicState() {
+  return {
+    rounds: state.rounds,
+    courses: state.courses,
+    players: state.players,
+    groups: state.groups,
+    scores: state.scores,
+    validatedHoles: state.validatedHoles,
+    notifications: state.notifications,
+    validatedRounds: state.validatedRounds,
+  };
+}
+
+function applyRemoteState(data) {
+  if (!data || typeof data !== "object") return;
+  isApplyingRemote = true;
+  state = {
+    ...state,
+    ...data,
+    activeView: state.activeView,
+    selectedRoundId: state.selectedRoundId,
+    selectedGroupId: state.selectedGroupId,
+    selectedPlayerId: state.selectedPlayerId,
+  };
+  saveLocalOnly();
+  isApplyingRemote = false;
+  render();
+}
+
+function scheduleRemoteSave() {
+  if (!supabaseClient || isApplyingRemote || !isAuthenticated) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(saveRemoteState, 450);
+}
+
+async function saveRemoteState() {
+  if (!supabaseClient || isApplyingRemote || !isAuthenticated) return;
+  const { error } = await supabaseClient
+    .from("app_state")
+    .upsert({ id: SUPABASE_STATE_ID, data: publicState() });
+  if (error) console.warn("Supabase save failed", error);
+}
+
+async function loadRemoteState() {
+  if (!supabaseClient || !isAuthenticated) return;
+  const { data, error } = await supabaseClient
+    .from("app_state")
+    .select("data")
+    .eq("id", SUPABASE_STATE_ID)
+    .single();
+  if (error) {
+    console.warn("Supabase load failed", error);
+    return;
+  }
+  if (data?.data && Object.keys(data.data).length) {
+    applyRemoteState(data.data);
+  } else {
+    await saveRemoteState();
+  }
+  remoteReady = true;
+}
+
+function subscribeRemoteState() {
+  if (!supabaseClient || !isAuthenticated) return;
+  supabaseClient
+    .channel("open-de-panse-state")
+    .on("postgres_changes", {
+      event: "*",
+      schema: "public",
+      table: "app_state",
+      filter: `id=eq.${SUPABASE_STATE_ID}`,
+    }, (payload) => {
+      if (payload.new?.data) applyRemoteState(payload.new.data);
+    })
+    .subscribe();
 }
 
 function courseForRound(roundId) {
@@ -378,15 +470,42 @@ function bindLogin() {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const value = normalizePassword(input.value);
-    if (value === APP_PASSWORD || value === "pense2026") {
+    if (value === ADMIN_PASSWORD || value === "adminpanse2026") {
       localStorage.setItem(AUTH_KEY, "ok");
+      localStorage.setItem(ROLE_KEY, "admin");
+      currentRole = "admin";
       isAuthenticated = true;
+      startRemoteSync();
+      render();
+      return;
+    }
+    if (value === PARTICIPANT_PASSWORD || value === "pense2026") {
+      localStorage.setItem(AUTH_KEY, "ok");
+      localStorage.setItem(ROLE_KEY, "participant");
+      currentRole = "participant";
+      isAuthenticated = true;
+      startRemoteSync();
       render();
       return;
     }
     error.hidden = false;
     input.select();
   });
+}
+
+function isAdmin() {
+  return currentRole === "admin";
+}
+
+function requireAdminMessage() {
+  alert("Cette action est réservée à l'administrateur.");
+}
+
+async function startRemoteSync() {
+  if (!supabaseClient || !isAuthenticated) return;
+  await loadRemoteState();
+  subscribeRemoteState();
+  render();
 }
 
 function renderTopbar() {
@@ -402,7 +521,7 @@ function renderTopbar() {
             <span>Stableford net - 4 tours - MVP</span>
           </div>
         </div>
-        <span class="status-pill">Tour ${round.number} · ${course.name}</span>
+        <span class="status-pill">${currentRole === "admin" ? "Admin" : "Participant"} · ${remoteReady ? "Live" : "Local"}</span>
       </div>
     </header>
   `;
@@ -720,7 +839,7 @@ function renderPlayers() {
               <div class="player-edit-row">
                 <div class="field">
                   <label>Handicap de départ</label>
-                  <input type="tel" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" autocomplete="off" value="${player.handicap.toFixed(1)}" data-player-handicap="${player.id}" />
+                  <input type="tel" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" autocomplete="off" value="${player.handicap.toFixed(1)}" data-player-handicap="${player.id}" ${isAdmin() ? "" : "readonly"} />
                 </div>
               </div>
               <div class="actions">
@@ -751,9 +870,11 @@ function renderGroups() {
       </div>
       <div class="panel-body">
         <div class="actions" style="margin-top:0;margin-bottom:14px">
-          <button class="btn primary" data-action="auto-groups-3">Créer 3 parties</button>
-          <button class="btn" data-action="auto-groups-4">Créer 4 parties</button>
-          <button class="btn" data-action="add-group">Ajouter une partie</button>
+          ${isAdmin() ? `
+            <button class="btn primary" data-action="auto-groups-3">Créer 3 parties</button>
+            <button class="btn" data-action="auto-groups-4">Créer 4 parties</button>
+            <button class="btn" data-action="add-group">Ajouter une partie</button>
+          ` : `<span class="tag blue">Parties créées par l'administrateur</span>`}
         </div>
         ${unassigned.length ? `<p class="small"><strong>Non affectés :</strong> ${unassigned.map((player) => player.name).join(", ")}</p>` : `<p class="small positive"><strong>Tous les joueurs sont affectés à une partie.</strong></p>`}
         <div class="cards group-list">
@@ -773,16 +894,16 @@ function renderGroupCard(group, index) {
           <strong>${group.name || `Partie ${index + 1}`}</strong>
           <div class="small">${players.length || 0} joueur${players.length > 1 ? "s" : ""} · marqueur ${playerName(group.markerId) || "à choisir"}</div>
         </div>
-        <button class="btn danger" data-remove-group="${group.id}">Supprimer</button>
+        ${isAdmin() ? `<button class="btn danger" data-remove-group="${group.id}">Supprimer</button>` : ""}
       </div>
       <div class="group-grid">
         <div class="field">
           <label>Nom</label>
-          <input value="${escapeHtml(group.name || "")}" data-group-name="${group.id}" />
+          <input value="${escapeHtml(group.name || "")}" data-group-name="${group.id}" ${isAdmin() ? "" : "readonly"} />
         </div>
         <div class="field">
           <label>Marqueur</label>
-          <select data-group-marker="${group.id}">
+          <select data-group-marker="${group.id}" ${isAdmin() ? "" : "disabled"}>
             <option value="">Choisir</option>
             ${group.playerIds.filter(Boolean).map((playerId) => `<option value="${playerId}" ${group.markerId === playerId ? "selected" : ""}>${playerName(playerId)}</option>`).join("")}
           </select>
@@ -792,7 +913,7 @@ function renderGroupCard(group, index) {
         ${[0, 1, 2, 3].map((slot) => `
           <div class="field">
             <label>Joueur ${slot + 1}</label>
-            <select data-group-player="${group.id}:${slot}">
+            <select data-group-player="${group.id}:${slot}" ${isAdmin() ? "" : "disabled"}>
               <option value="">Libre</option>
               ${state.players.map((player) => `<option value="${player.id}" ${group.playerIds[slot] === player.id ? "selected" : ""}>${player.name}</option>`).join("")}
             </select>
@@ -857,6 +978,7 @@ function escapeHtml(value) {
 }
 
 function addGroup(roundId) {
+  if (!isAdmin()) return requireAdminMessage();
   const groups = groupsForRound(roundId);
   groups.push({
     id: crypto.randomUUID ? crypto.randomUUID() : `g-${Date.now()}`,
@@ -869,6 +991,7 @@ function addGroup(roundId) {
 }
 
 function autoCreateGroups(roundId, count) {
+  if (!isAdmin()) return requireAdminMessage();
   if (!state.groups) state.groups = createInitialGroups();
   const groups = Array.from({ length: count }, (_, index) => ({
     id: crypto.randomUUID ? crypto.randomUUID() : `g-${Date.now()}-${index}`,
@@ -891,6 +1014,7 @@ function autoCreateGroups(roundId, count) {
 }
 
 function updateGroupPlayer(groupId, slot, playerId) {
+  if (!isAdmin()) return requireAdminMessage();
   const group = groupsForRound(state.selectedRoundId).find((item) => item.id === groupId);
   if (!group) return;
   if (playerId) {
@@ -907,6 +1031,7 @@ function updateGroupPlayer(groupId, slot, playerId) {
 }
 
 function removeGroup(groupId) {
+  if (!isAdmin()) return requireAdminMessage();
   state.groups[state.selectedRoundId] = groupsForRound(state.selectedRoundId).filter((group) => group.id !== groupId);
   if (state.selectedGroupId === groupId) state.selectedGroupId = "";
   saveState();
@@ -1024,6 +1149,7 @@ function bindEvents() {
 
   document.querySelectorAll("[data-player-handicap]").forEach((input) => {
     input.addEventListener("change", () => {
+      if (!isAdmin()) return requireAdminMessage();
       const value = Number(String(input.value).replace(",", "."));
       if (Number.isNaN(value) || value < 0) {
         render();
@@ -1066,6 +1192,7 @@ function bindEvents() {
 
   document.querySelectorAll("[data-group-name]").forEach((input) => {
     input.addEventListener("change", () => {
+      if (!isAdmin()) return requireAdminMessage();
       const group = groupsForRound(state.selectedRoundId).find((item) => item.id === input.dataset.groupName);
       if (group) group.name = input.value.trim() || group.name;
       saveState();
@@ -1075,6 +1202,7 @@ function bindEvents() {
 
   document.querySelectorAll("[data-group-marker]").forEach((select) => {
     select.addEventListener("change", () => {
+      if (!isAdmin()) return requireAdminMessage();
       const group = groupsForRound(state.selectedRoundId).find((item) => item.id === select.dataset.groupMarker);
       if (group) group.markerId = select.value;
       saveState();
@@ -1096,4 +1224,7 @@ function bindEvents() {
   if (reset) reset.addEventListener("click", resetScores);
 }
 
+if (isAuthenticated) {
+  startRemoteSync();
+}
 render();
