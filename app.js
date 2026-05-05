@@ -104,6 +104,12 @@ let isApplyingRemote = false;
 let syncTimer = null;
 const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+if (new URLSearchParams(window.location.search).has("reset")) {
+  localStorage.removeItem(AUTH_KEY);
+  localStorage.removeItem(ROLE_KEY);
+  window.location.replace(window.location.pathname);
+}
+
 function createInitialState() {
   return {
     activeView: "home",
