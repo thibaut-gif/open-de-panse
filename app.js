@@ -1073,12 +1073,14 @@ function renderPlayers() {
                 </div>
                 <span class="tag green">${stats.handicapValue} CR</span>
               </div>
-              <div class="player-edit-row">
-                <div class="field">
-                  <label>Handicap de départ</label>
-                  <input type="tel" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" autocomplete="off" value="${player.handicap.toFixed(1)}" data-player-handicap="${player.id}" ${isAdmin() ? "" : "readonly"} />
+              ${isAdmin() ? `
+                <div class="player-edit-row">
+                  <div class="field">
+                    <label>Handicap de départ</label>
+                    <input type="tel" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" autocomplete="off" value="${player.handicap.toFixed(1)}" data-player-handicap="${player.id}" />
+                  </div>
                 </div>
-              </div>
+              ` : ""}
               ${renderHandicapHistory(player)}
               ${renderPlayerScorecards(player)}
             </div>
