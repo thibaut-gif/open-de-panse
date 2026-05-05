@@ -521,7 +521,10 @@ function renderTopbar() {
             <span>Stableford net - 4 tours - MVP</span>
           </div>
         </div>
-        <span class="status-pill">${currentRole === "admin" ? "Admin" : "Participant"} · ${remoteReady ? "Live" : "Local"}</span>
+        <div class="topbar-actions">
+          <span class="status-pill">${currentRole === "admin" ? "Admin" : "Participant"} · ${remoteReady ? "Live" : "Local"}</span>
+          <button class="btn logout-btn" data-action="logout">Sortir</button>
+        </div>
       </div>
     </header>
   `;
@@ -1084,6 +1087,17 @@ function bindEvents() {
     button.addEventListener("click", () => {
       state.activeView = button.dataset.view;
       saveState();
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-action="logout"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      localStorage.removeItem(AUTH_KEY);
+      localStorage.removeItem(ROLE_KEY);
+      isAuthenticated = false;
+      currentRole = "participant";
+      remoteReady = false;
       render();
     });
   });

@@ -157,6 +157,18 @@ button {
   white-space: nowrap;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logout-btn {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
 .container {
   width: min(1120px, 100%);
   margin: 0 auto;
