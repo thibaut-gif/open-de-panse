@@ -518,23 +518,51 @@ button {
   font-weight: 800;
 }
 
+.scorecard-pan-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 36px;
+  border: 1px solid #bdd2c6;
+  border-radius: 8px;
+  background: white;
+  color: var(--green);
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .scorecard-scroll {
   width: 100%;
-  overflow-x: auto;
+  max-width: 100%;
+  overflow-x: scroll;
+  overflow-y: hidden;
   margin: 10px 0;
   border: 1px solid var(--line);
   border-radius: 8px;
+  background: white;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
 }
 
 .scorecard-table {
-  width: 100%;
-  min-width: 720px;
+  width: max-content;
+  min-width: 860px;
   border-collapse: collapse;
   background: white;
 }
 
 .scorecard-table th,
 .scorecard-table td {
+  min-width: 42px;
   padding: 8px;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);

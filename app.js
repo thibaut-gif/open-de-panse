@@ -1189,6 +1189,10 @@ function renderPlayerScorecard(player, roundId) {
         <span>Tour ${round.number} · ${course.name}</span>
         <span class="scorecard-status">${status}</span>
       </summary>
+      <div class="scorecard-pan-actions">
+        <button class="icon-btn" data-scorecard-pan="-1" title="Reculer dans la carte" type="button">‹</button>
+        <button class="icon-btn" data-scorecard-pan="1" title="Avancer dans la carte" type="button">›</button>
+      </div>
       <div class="scorecard-scroll">
         <table class="scorecard-table">
           <tbody>
@@ -1537,6 +1541,15 @@ function bindEvents() {
 
   document.querySelectorAll("[data-keypad-clear]").forEach((button) => {
     button.addEventListener("click", clearActiveScore);
+  });
+
+  document.querySelectorAll("[data-scorecard-pan]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const card = button.closest(".player-scorecard");
+      const scroll = card?.querySelector(".scorecard-scroll");
+      if (!scroll) return;
+      scroll.scrollBy({ left: Number(button.dataset.scorecardPan) * 240, behavior: "smooth" });
+    });
   });
 
   document.querySelectorAll("[data-mobile-hole-prev]").forEach((button) => {
