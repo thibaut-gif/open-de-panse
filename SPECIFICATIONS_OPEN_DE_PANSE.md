@@ -283,6 +283,15 @@ La connexion a une source publique de parcours sera traitee comme un module sepa
 - Suit la mise a jour automatique des handicaps apres chaque tour.
 - Termine la competition.
 
+### Administrateur
+
+- Accede avec un mot de passe administrateur.
+- Est le seul profil autorise a creer ou modifier les parties.
+- Peut modifier les joueurs, les handicaps de depart et les parcours.
+- Peut corriger les scores.
+- Peut valider les trous et les tours.
+- Garantit que tous les participants voient les memes parties et les memes donnees.
+
 ### Joueur
 
 - Peut saisir son propre score.
@@ -291,6 +300,14 @@ La connexion a une source publique de parcours sera traitee comme un module sepa
 - Consulte le classement live.
 - Consulte sa couleur de depart recommandee.
 - Recoit les notifications de score brut sous le par.
+
+### Participant
+
+- Accede avec le mot de passe participant.
+- Consulte les parties creees par l'administrateur.
+- Peut saisir les scores de sa partie.
+- Consulte le classement live.
+- Voit les alertes sur la page d'accueil et dans l'onglet Alertes.
 
 ### Marqueur de partie
 
@@ -625,6 +642,16 @@ Canaux possibles :
 - Push mobile via PWA dans la mesure du possible.
 - Notification dans l'application comme fallback obligatoire.
 - Email ou SMS dans une version ulterieure.
+
+### Affichage des alertes
+
+Les alertes doivent apparaitre :
+
+- Sur la page d'accueil, dans un bloc "Dernieres alertes".
+- Dans l'onglet Alertes, sous forme d'historique.
+- En temps reel chez tous les participants, y compris ceux qui jouent dans une autre partie.
+
+Cela necessite une base partagee et une synchronisation temps reel.
 
 ### Contraintes
 

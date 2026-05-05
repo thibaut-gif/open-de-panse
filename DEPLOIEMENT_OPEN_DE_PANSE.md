@@ -4,10 +4,11 @@
 
 Mettre l'application Open de Panse en ligne pour que les participants puissent y acceder depuis leur telephone avec un mot de passe unique.
 
-Mot de passe retenu pour le prototype :
+Mots de passe retenus :
 
 ```text
-panse2026
+Participant : panse2026
+Administrateur : panseadmin2026
 ```
 
 L'application accepte aussi `panse 2026`, avec ou sans majuscules.
@@ -133,4 +134,3 @@ Pour l'Open de Panse, la meilleure suite est :
 1. Publier rapidement une demo sur Vercel.
 2. Ajouter Supabase avant de l'utiliser en competition.
 3. Garder un mot de passe unique pour tous les participants.
-

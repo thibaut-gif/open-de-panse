@@ -2,6 +2,13 @@
 
 MVP web mobile-first pour suivre une competition amicale de golf en Stableford net.
 
+## Acces
+
+- Participant : `panse2026`
+- Administrateur : `panseadmin2026`
+
+L'administrateur peut creer les parties et modifier les handicaps.
+
 ## Fonctionnalites actuelles
 
 - Mot de passe unique : `panse2026`.
@@ -36,4 +43,3 @@ Voir [MISE_EN_LIGNE_GRATUITE.md](./MISE_EN_LIGNE_GRATUITE.md).
 Cette version stocke les donnees dans le navigateur.
 
 Pour synchroniser les scores entre plusieurs telephones, il faudra ajouter Supabase ou une autre base partagee.
-
