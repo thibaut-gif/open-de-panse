@@ -443,6 +443,16 @@ function activeGroupPlayers() {
   return state.selectedGroupId ? playersInSelectedGroup() : state.players;
 }
 
+function startGroupScoreEntry(roundId, groupId) {
+  const group = groupsForRound(roundId).find((item) => item.id === groupId);
+  const firstPlayerId = group?.playerIds.find(Boolean);
+  state.selectedGroupId = groupId;
+  state.selectedPlayerId = firstPlayerId || state.selectedPlayerId;
+  state.activeMobileHole = 1;
+  state.activeScoreCell = firstPlayerId ? { roundId, playerId: firstPlayerId, holeNumber: 1 } : null;
+  state.activeView = "score";
+}
+
 function advanceActiveScoreCell() {
   const active = state.activeScoreCell;
   if (!active) return;
@@ -773,15 +783,11 @@ function renderHome() {
       <div class="panel">
         <div class="panel-header">
           <div>
-            <h3 class="panel-title">Leader cumulé</h3>
-            <p class="panel-subtitle">Classement Stableford net sur les tours joués</p>
+            <h3 class="panel-title">Classement cumulé</h3>
+            <p class="panel-subtitle">Les 3 premiers et les 3 derniers</p>
           </div>
         </div>
-        <div class="panel-body">${leader ? `
-          <div class="player-name">${leader.player.name}</div>
-          <div class="score-big positive">${leader.stats.points} pts</div>
-          <p class="small">${leader.stats.holesPlayed} trous joués · brut ${leader.stats.grossTotal || "-"} · ${formatRelative(leader.stats.relative)}</p>
-        ` : `<div class="empty">Aucun score saisi.</div>`}</div>
+        <div class="panel-body">${renderHomeRankingSnapshot(cumulative)}</div>
       </div>
     </div>
     <div class="panel" style="margin-top:14px">
@@ -805,6 +811,33 @@ function renderHome() {
           </div>
         `).join("") : `<div class="empty">Les premiers birdies apparaîtront ici.</div>`}
       </div>
+    </div>
+  `;
+}
+
+function renderHomeRankingSnapshot(cumulative) {
+  if (!cumulative.length) return `<div class="empty">Aucun score saisi.</div>`;
+  const topThree = cumulative.slice(0, 3);
+  const bottomThree = cumulative.slice(-3).reverse();
+  return `
+    <div class="home-ranking">
+      <div class="home-ranking-row">
+        ${topThree.map((row, index) => renderHomeRankingTile(row, index + 1, "positive")).join("")}
+      </div>
+      <div class="home-ranking-row">
+        ${bottomThree.map((row, index) => renderHomeRankingTile(row, cumulative.length - index, "negative")).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderHomeRankingTile(row, rank, tone) {
+  return `
+    <div class="home-ranking-tile ${tone}">
+      <span class="home-rank">#${rank}</span>
+      <strong>${row.player.name}</strong>
+      <div>${row.stats.points} pts</div>
+      <small>${row.stats.holesPlayed} trous</small>
     </div>
   `;
 }
@@ -1183,44 +1216,53 @@ function renderPlayerScorecard(player, roundId) {
   const pointsTotal = cells.reduce((sum, cell) => sum + (Number(cell.points) || 0), 0);
   const isValidated = Boolean(state.validatedRounds[roundId]);
   const status = isValidated ? "validé" : stats.holesPlayed ? `${stats.holesPlayed}/${course.holes.length} trous` : "à venir";
+  const frontNine = cells.slice(0, 9);
+  const backNine = cells.slice(9, 18);
   return `
     <details class="player-scorecard">
       <summary>
         <span>Tour ${round.number} · ${course.name}</span>
         <span class="scorecard-status">${status}</span>
       </summary>
-      <div class="scorecard-pan-actions">
-        <button class="icon-btn" data-scorecard-pan="-1" title="Reculer dans la carte" type="button">‹</button>
-        <button class="icon-btn" data-scorecard-pan="1" title="Avancer dans la carte" type="button">›</button>
-      </div>
-      <div class="scorecard-scroll">
-        <table class="scorecard-table">
-          <tbody>
-            <tr>
-              <th>Trou</th>
-              ${cells.map((cell) => `<th>${cell.hole.number}</th>`).join("")}
-              <th>Total</th>
-            </tr>
-            <tr>
-              <td>Par</td>
-              ${cells.map((cell) => `<td>${cell.hole.par}</td>`).join("")}
-              <td>${parTotal}</td>
-            </tr>
-            <tr>
-              <td>Brut</td>
-              ${cells.map((cell) => `<td>${cell.gross || "-"}</td>`).join("")}
-              <td>${grossTotal || "-"}</td>
-            </tr>
-            <tr>
-              <td>Pts</td>
-              ${cells.map((cell) => `<td>${cell.points ?? "-"}</td>`).join("")}
-              <td>${pointsTotal || "-"}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      ${renderScorecardNine("Aller", frontNine)}
+      ${renderScorecardNine("Retour", backNine)}
       <div class="small">Brut ${grossTotal || "-"} · Stableford ${pointsTotal || "-"} pts · ${stats.holesPlayed}/${course.holes.length} trous</div>
     </details>
+  `;
+}
+
+function renderScorecardNine(label, cells) {
+  const parTotal = cells.reduce((sum, cell) => sum + cell.hole.par, 0);
+  const grossTotal = cells.reduce((sum, cell) => sum + (Number(cell.gross) || 0), 0);
+  const pointsTotal = cells.reduce((sum, cell) => sum + (Number(cell.points) || 0), 0);
+  return `
+    <div class="scorecard-nine">
+      <div class="scorecard-nine-title">${label}</div>
+      <table class="scorecard-table compact">
+        <tbody>
+          <tr>
+            <th>Trou</th>
+            ${cells.map((cell) => `<th>${cell.hole.number}</th>`).join("")}
+            <th>Total</th>
+          </tr>
+          <tr>
+            <td>Par</td>
+            ${cells.map((cell) => `<td>${cell.hole.par}</td>`).join("")}
+            <td>${parTotal}</td>
+          </tr>
+          <tr>
+            <td>Brut</td>
+            ${cells.map((cell) => `<td>${cell.gross || "-"}</td>`).join("")}
+            <td>${grossTotal || "-"}</td>
+          </tr>
+          <tr>
+            <td>Net</td>
+            ${cells.map((cell) => `<td>${cell.points ?? "-"}</td>`).join("")}
+            <td>${pointsTotal || "-"}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   `;
 }
 
@@ -1509,9 +1551,13 @@ function bindEvents() {
 
   document.querySelectorAll('[data-action="select-group"]').forEach((select) => {
     select.addEventListener("change", () => {
-      state.selectedGroupId = select.value;
-      const firstPlayer = playersInSelectedGroup()[0];
-      if (firstPlayer) state.selectedPlayerId = firstPlayer.id;
+      if (select.value) {
+        startGroupScoreEntry(state.selectedRoundId, select.value);
+      } else {
+        state.selectedGroupId = "";
+        state.activeMobileHole = 1;
+        state.activeScoreCell = null;
+      }
       saveState();
       render();
     });
@@ -1541,15 +1587,6 @@ function bindEvents() {
 
   document.querySelectorAll("[data-keypad-clear]").forEach((button) => {
     button.addEventListener("click", clearActiveScore);
-  });
-
-  document.querySelectorAll("[data-scorecard-pan]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const card = button.closest(".player-scorecard");
-      const scroll = card?.querySelector(".scorecard-scroll");
-      if (!scroll) return;
-      scroll.scrollBy({ left: Number(button.dataset.scorecardPan) * 240, behavior: "smooth" });
-    });
   });
 
   document.querySelectorAll("[data-mobile-hole-prev]").forEach((button) => {
@@ -1620,10 +1657,7 @@ function bindEvents() {
 
   document.querySelectorAll("[data-score-group]").forEach((button) => {
     button.addEventListener("click", () => {
-      const group = groupsForRound(state.selectedRoundId).find((item) => item.id === button.dataset.scoreGroup);
-      state.selectedGroupId = button.dataset.scoreGroup;
-      state.selectedPlayerId = group?.playerIds.find(Boolean) || state.selectedPlayerId;
-      state.activeView = "score";
+      startGroupScoreEntry(state.selectedRoundId, button.dataset.scoreGroup);
       saveState();
       render();
     });
