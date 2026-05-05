@@ -520,7 +520,7 @@ function renderLogin() {
   return `
     <div class="login-screen">
       <div class="login-panel">
-        <img class="login-logo" src="assets/open-de-panse-logo.png?v=3" alt="Logo Open de Panse" />
+        <img class="login-logo" src="open-de-panse-logo.png?v=3" alt="Logo Open de Panse" />
         <h1>Open de Panse</h1>
         <p>Accès réservé aux participants de l'édition 2026.</p>
         <form data-login-form>
