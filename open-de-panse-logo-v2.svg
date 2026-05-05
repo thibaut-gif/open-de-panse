@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1600" role="img" aria-labelledby="title desc">
+  <title id="title">Open de Panse 2026 Italia</title>
+  <desc id="desc">Logo noir et blanc Open de Panse 2026 Italia.</desc>
+  <rect width="1600" height="1600" fill="#fff"/>
+
+  <g fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="800" cy="800" r="705" stroke-width="34"/>
+    <circle cx="800" cy="800" r="654" stroke-width="18"/>
+  </g>
+
+  <rect x="0" y="650" width="1600" height="270" fill="#fff"/>
+
+  <text x="800" y="330" text-anchor="middle"
+        font-family="Impact, 'Arial Black', Arial, sans-serif"
+        font-size="172" font-weight="900" fill="#000"
+        transform="rotate(-4 800 330)">2026</text>
+
+  <g fill="#000">
+    <g transform="translate(450 410) rotate(-23)">
+      <rect x="0" y="0" width="32" height="245" rx="16"/>
+      <rect x="52" y="0" width="32" height="245" rx="16"/>
+      <rect x="104" y="0" width="32" height="245" rx="16"/>
+      <rect x="156" y="0" width="32" height="245" rx="16"/>
+      <path d="M0 205h188c0 65-43 112-94 112S0 270 0 205z"/>
+      <rect x="76" y="290" width="44" height="210" rx="22"/>
+    </g>
+
+    <g transform="translate(738 414)">
+      <circle cx="62" cy="62" r="78"/>
+      <rect x="34" y="129" width="56" height="152" rx="4"/>
+      <g fill="#fff">
+        <circle cx="28" cy="40" r="11"/><circle cx="61" cy="27" r="11"/><circle cx="95" cy="39" r="11"/>
+        <circle cx="29" cy="77" r="11"/><circle cx="62" cy="65" r="11"/><circle cx="96" cy="77" r="11"/>
+        <circle cx="45" cy="110" r="11"/><circle cx="80" cy="110" r="11"/>
+      </g>
+    </g>
+
+    <g transform="translate(930 414) rotate(34)">
+      <rect x="0" y="132" width="58" height="370" rx="29"/>
+      <path d="M22 20c85-43 176 16 187 96 3 22-12 42-34 46L67 181c-32 6-62-19-62-52V55c0-15 7-28 17-35z"/>
+    </g>
+
+    <rect x="604" y="905" width="56" height="330" rx="28" transform="rotate(35 632 1070)"/>
+    <rect x="940" y="905" width="56" height="330" rx="28" transform="rotate(-35 968 1070)"/>
+  </g>
+
+  <text x="800" y="875" text-anchor="middle"
+        font-family="Impact, 'Arial Black', Arial, sans-serif"
+        font-size="190" font-weight="900" fill="#000"
+        letter-spacing="0">OPEN DE PANSE</text>
+
+  <text x="800" y="1350" text-anchor="middle"
+        font-family="Impact, 'Arial Black', Arial, sans-serif"
+        font-size="118" font-weight="900" fill="#000"
+        letter-spacing="26">ITALIA</text>
+</svg>
