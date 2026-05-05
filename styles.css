@@ -423,18 +423,24 @@ button {
 
 .home-ranking {
   display: grid;
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.home-ranking-row {
+.home-ranking-column {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.home-ranking-heading {
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
 }
 
 .home-ranking-tile {
   min-width: 0;
-  padding: 10px;
+  padding: 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #f8faf8;
@@ -600,12 +606,12 @@ button {
 
 .scorecard-table th,
 .scorecard-table td {
-  padding: 6px 2px;
+  padding: 4px 1px;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   text-align: center;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 9px;
   line-height: 1.05;
 }
 
@@ -1043,14 +1049,17 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .home-ranking-row {
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 5px;
+  .home-ranking {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .home-ranking-column {
+    gap: 6px;
   }
 
   .home-ranking-tile {
-    padding: 7px 4px;
+    padding: 7px 5px;
   }
 
   .home-ranking-tile strong {
@@ -1062,23 +1071,33 @@ button {
   }
 
   .player-card {
-    padding: 8px;
+    padding: 6px;
   }
 
   .player-scorecard {
-    padding: 8px 6px;
+    padding: 6px 3px;
+  }
+
+  .player-scorecards {
+    gap: 6px;
+  }
+
+  .scorecard-nine {
+    margin: 8px 0;
+    border-radius: 6px;
   }
 
   .scorecard-nine-title {
-    padding: 6px;
-    font-size: 10px;
+    padding: 5px;
+    font-size: 9px;
   }
 
   .scorecard-table th,
   .scorecard-table td {
-    padding: 5px 1px;
-    font-size: 10px;
+    padding: 3px 0;
+    font-size: 8px;
     letter-spacing: 0;
+    line-height: 1;
   }
 
   .mobile-hole-entry {
