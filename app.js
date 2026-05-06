@@ -563,7 +563,7 @@ function maybeNotifyUnderPar(roundId, playerId, holeNumber, gross) {
     holeNumber,
     type,
     groupName: group?.name || "Partie non définie",
-    message: `${player.name} · ${group?.name || "Partie non définie"} · trou ${holeNumber} · ${labelForUnderPar(type)} brut`,
+    message: `Shot pour ${player.name} · ${group?.name || "Partie non définie"} · trou ${holeNumber} · ${labelForUnderPar(type)} brut`,
     detail: `Tour ${round.number} - ${course.name}`,
     createdAt: new Date().toLocaleString("fr-FR"),
   });
@@ -879,8 +879,8 @@ function renderHome() {
     <div class="panel" style="margin-top:14px">
       <div class="panel-header">
         <div>
-          <h3 class="panel-title">Dernières alertes</h3>
-          <p class="panel-subtitle">Birdies, eagles et autres scores bruts sous le par</p>
+          <h3 class="panel-title">Dernière alerte shot</h3>
+          <p class="panel-subtitle">Birdie, eagle ou mieux : tournée générale</p>
         </div>
         <span class="tag gold">${state.notifications.length}</span>
       </div>
@@ -895,7 +895,7 @@ function renderHome() {
               <span class="tag gold">${labelForUnderPar(item.type)}</span>
             </div>
           </div>
-        `).join("") : `<div class="empty">Les premiers birdies apparaîtront ici.</div>`}
+        `).join("") : `<div class="empty">Les premiers shots apparaîtront ici.</div>`}
       </div>
     </div>
   `;
@@ -944,10 +944,11 @@ function renderHomeRankingSnapshot(cumulative) {
 }
 
 function renderHomeRankingTile(row, rank, tone) {
+  const displayName = isAdmin() ? row.player.name : `Joueur ${rank}`;
   return `
     <div class="home-ranking-tile ${tone}">
       <span class="home-rank">#${rank}</span>
-      <strong>${row.player.name}</strong>
+      <strong>${displayName}</strong>
       <div>${row.stats.points} pts</div>
       <small>${row.stats.holesPlayed} trous</small>
     </div>
@@ -1001,6 +1002,23 @@ function renderLeaderboard() {
 }
 
 function renderLeaderboardTable(rows) {
+  if (!isAdmin()) {
+    return `
+      <table class="leaderboard">
+        <thead><tr><th>#</th><th>Classement</th><th>Pts</th><th>Trous</th></tr></thead>
+        <tbody>
+          ${rows.map((row, index) => `
+            <tr>
+              <td class="rank">${index + 1}</td>
+              <td><div class="player-name">Joueur ${index + 1}</div></td>
+              <td><span class="score-big">${row.stats.points}</span></td>
+              <td>${row.stats.holesPlayed}/${courseForRound(state.selectedRoundId).holes.length}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+  }
   return `
     <table class="leaderboard">
       <thead><tr><th>#</th><th>Joueur</th><th>Pts</th><th>Trous</th><th>Brut</th><th>Par</th></tr></thead>
@@ -1558,8 +1576,8 @@ function renderNotifications() {
     <div class="panel">
       <div class="panel-header">
         <div>
-          <h3 class="panel-title">Notifications</h3>
-          <p class="panel-subtitle">Birdies, eagles, albatros et meilleurs scores bruts sous le par</p>
+          <h3 class="panel-title">Alertes shot</h3>
+          <p class="panel-subtitle">Birdies, eagles, albatros : les shots à honorer</p>
         </div>
       </div>
       <div class="panel-body cards">
@@ -1573,7 +1591,7 @@ function renderNotifications() {
               <span class="tag gold">${labelForUnderPar(item.type)}</span>
             </div>
           </div>
-        `).join("") : `<div class="empty">Aucun score brut sous le par pour le moment.</div>`}
+        `).join("") : `<div class="empty">Aucun shot à boire pour le moment.</div>`}
       </div>
     </div>
   `;
