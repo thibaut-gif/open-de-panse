@@ -717,6 +717,93 @@ button {
   font-weight: 950;
 }
 
+.cumulative-panel {
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cumulative-panel:hover {
+  border-color: rgba(11, 107, 58, 0.35);
+  box-shadow: 0 10px 24px rgba(6, 34, 21, 0.08);
+}
+
+.position-race-panel {
+  margin-top: 10px;
+}
+
+.augusta-fullscreen .position-race-panel {
+  color: var(--ink);
+}
+
+.position-race-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.position-race-chart {
+  display: block;
+  width: 100%;
+  min-width: 920px;
+  height: auto;
+}
+
+.race-bg {
+  fill: #f6f8ef;
+  stroke: #d8d0aa;
+  stroke-width: 6;
+}
+
+.race-grid {
+  stroke: rgba(35, 71, 47, 0.2);
+  stroke-width: 1;
+}
+
+.race-grid.vertical {
+  stroke-dasharray: 4 6;
+}
+
+.race-axis {
+  fill: #415146;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.race-label {
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.race-title {
+  fill: #1b1f1c;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.race-line {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: drawRaceLine 2.8s ease-out forwards;
+}
+
+.race-dot,
+.race-label {
+  opacity: 0;
+  animation: revealRaceLabel 0.35s ease-out forwards;
+}
+
+@keyframes drawRaceLine {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes revealRaceLabel {
+  to {
+    opacity: 1;
+  }
+}
+
 .cards {
   display: grid;
   gap: 10px;

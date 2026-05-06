@@ -9,8 +9,8 @@ const SUPABASE_URL = "https://pvqzyysapstdozequtkw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_w7E0RSqEulwTpKLAwyjBow_J1wKlt2a";
 const SUPABASE_STATE_ID = "open-de-panse-2026";
 const SYNC_POLL_MS = 2500;
-const LOGO_SRC = "open-de-panse-logo.png?v=4";
-const LOGO_FALLBACK_SRC = "assets/open-de-panse-logo.png?v=4";
+const LOGO_SRC = "open-de-panse-logo.png?v=5";
+const LOGO_FALLBACK_SRC = "assets/open-de-panse-logo.png?v=5";
 
 const icons = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>',
@@ -215,6 +215,7 @@ function createInitialState() {
     activeScoreCell: null,
     activeMobileHole: 1,
     seenNotificationCount: 0,
+    showPositionRace: false,
     anonymizeParticipantLeaderboards: true,
     rounds: roundsSeed,
     courses: coursesSeed,
@@ -285,6 +286,7 @@ function applyRemoteState(data) {
     homePreviewRoundId: state.homePreviewRoundId,
     activeScoreCell: state.activeScoreCell,
     activeMobileHole: state.activeMobileHole,
+    showPositionRace: state.showPositionRace,
     seenNotificationCount: state.seenNotificationCount,
   };
   state.players = normalizePlayers(state.players);
@@ -1033,9 +1035,12 @@ function renderAugustaLeaderboard() {
   return `
     <div class="panel augusta-panel">
       <div class="panel-header">
-        <div>
-          <h3 class="panel-title">Leaderboard Milano 2026</h3>
-          <p class="panel-subtitle">${selectedRoundTitle()} · Points Stableford cumulés jusqu'au tour ${round.number}</p>
+        <div class="augusta-title-lockup">
+          <img class="augusta-logo" ${logoAttrs()} alt="Logo Open de Panse" />
+          <div>
+            <h3 class="panel-title">Leaderboard Milano 2026</h3>
+            <p class="panel-subtitle">${selectedRoundTitle()} · Points Stableford cumulés jusqu'au tour ${round.number}</p>
+          </div>
         </div>
       </div>
       <div class="augusta-scroll">
@@ -1064,13 +1069,106 @@ function renderAugustaLeaderboard() {
   `;
 }
 
+function leaderboardTimeline() {
+  const sequence = state.rounds.flatMap((round) => {
+    const course = courseForRound(round.id);
+    return course.holes.map((hole) => ({ round, course, hole }));
+  });
+  const totals = new Map(state.players.map((player) => [player.id, 0]));
+  const played = new Map(state.players.map((player) => [player.id, 0]));
+  const lines = new Map(state.players.map((player) => [player.id, []]));
+
+  sequence.forEach((step, stepIndex) => {
+    state.players.forEach((player) => {
+      const gross = getGross(step.round.id, player.id, step.hole.number);
+      if (!gross) return;
+      const stats = playerRoundStats(player, step.round.id);
+      const strokes = strokesOnHole(stats.handicapValue, step.hole.strokeIndex);
+      totals.set(player.id, totals.get(player.id) + (stablefordPoints(step.hole.par, gross, strokes) || 0));
+      played.set(player.id, played.get(player.id) + 1);
+    });
+
+    const ranking = [...state.players].sort((a, b) => {
+      const totalDiff = totals.get(b.id) - totals.get(a.id);
+      if (totalDiff) return totalDiff;
+      const playedDiff = played.get(b.id) - played.get(a.id);
+      if (playedDiff) return playedDiff;
+      return a.name.localeCompare(b.name);
+    });
+    ranking.forEach((player, rankIndex) => {
+      lines.get(player.id).push({
+        step: stepIndex + 1,
+        rank: rankIndex + 1,
+        total: totals.get(player.id),
+        played: played.get(player.id),
+      });
+    });
+  });
+
+  return { sequence, lines, totals, played };
+}
+
+function renderPositionRaceChart() {
+  const { sequence, lines, totals } = leaderboardTimeline();
+  const width = 1040;
+  const height = 420;
+  const padding = { top: 34, right: 112, bottom: 42, left: 44 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const maxRank = Math.max(1, state.players.length);
+  const colors = ["#b51625", "#145db7", "#0b6b3a", "#d45b16", "#6f42c1", "#111827", "#0f766e", "#be185d", "#64748b", "#7c2d12", "#2563eb", "#15803d"];
+  const xForStep = (step) => padding.left + ((step - 1) / Math.max(1, sequence.length - 1)) * chartWidth;
+  const yForRank = (rank) => padding.top + ((rank - 1) / Math.max(1, maxRank - 1)) * chartHeight;
+  const rankedPlayers = [...state.players].sort((a, b) => totals.get(b.id) - totals.get(a.id) || a.name.localeCompare(b.name));
+  const playerRank = new Map(rankedPlayers.map((player, index) => [player.id, index + 1]));
+
+  return `
+    <div class="panel position-race-panel">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">Course des positions</h3>
+          <p class="panel-subtitle">Évolution du classement Stableford cumulé sur les 72 trous</p>
+        </div>
+      </div>
+      <div class="position-race-scroll">
+        <svg class="position-race-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Évolution des positions sur 72 trous">
+          <rect x="0" y="0" width="${width}" height="${height}" rx="10" class="race-bg"></rect>
+          ${[1, 3, 6, 9, 12].map((rank) => rank <= maxRank ? `
+            <line x1="${padding.left}" y1="${yForRank(rank)}" x2="${width - padding.right}" y2="${yForRank(rank)}" class="race-grid"></line>
+            <text x="${padding.left - 10}" y="${yForRank(rank) + 4}" class="race-axis" text-anchor="end">#${rank}</text>
+          ` : "").join("")}
+          ${[1, 9, 18, 27, 36, 45, 54, 63, 72].map((step) => `
+            <line x1="${xForStep(step)}" y1="${padding.top}" x2="${xForStep(step)}" y2="${height - padding.bottom}" class="race-grid vertical"></line>
+            <text x="${xForStep(step)}" y="${height - 16}" class="race-axis" text-anchor="middle">${step}</text>
+          `).join("")}
+          ${state.players.map((player, index) => {
+            const points = lines.get(player.id).map((point) => `${xForStep(point.step)},${yForRank(point.rank)}`).join(" ");
+            const last = lines.get(player.id).at(-1);
+            const color = colors[index % colors.length];
+            return `
+              <polyline class="race-line" points="${points}" pathLength="100" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" style="animation-delay:${index * 0.08}s"></polyline>
+              <circle class="race-dot" cx="${xForStep(last.step)}" cy="${yForRank(last.rank)}" r="4.5" fill="${color}" style="animation-delay:${2.8 + index * 0.08}s"></circle>
+              <text x="${width - padding.right + 12}" y="${yForRank(playerRank.get(player.id)) + 4}" fill="${color}" class="race-label" style="animation-delay:${2.9 + index * 0.08}s">${displayPlayerName(player, playerRank.get(player.id))}</text>
+            `;
+          }).join("")}
+          <text x="${padding.left}" y="20" class="race-title">Trou joué</text>
+          <text x="${width - padding.right}" y="20" class="race-title" text-anchor="end">Position actuelle</text>
+        </svg>
+      </div>
+    </div>
+  `;
+}
+
 function renderAugustaFullscreen() {
   return `
     <div class="augusta-fullscreen" data-action="close-augusta">
       <div class="augusta-fullscreen-header">
-        <div>
-          <h1>Leaderboard Milano 2026</h1>
-          <p>${selectedRoundTitle()} · points Stableford cumulés en live</p>
+        <div class="augusta-title-lockup">
+          <img class="augusta-logo" ${logoAttrs()} alt="Logo Open de Panse" />
+          <div>
+            <h1>Leaderboard Milano 2026</h1>
+            <p>${selectedRoundTitle()} · points Stableford cumulés en live</p>
+          </div>
         </div>
         <button class="btn" data-action="close-augusta">Retour</button>
       </div>
@@ -1240,17 +1338,19 @@ function renderLeaderboard() {
         ${renderLeaderboardTable(sortedLeaderboard("round"))}
       </div>
     </div>
-    <div class="panel" style="margin-top:14px">
+    <div class="panel cumulative-panel" style="margin-top:14px" data-action="toggle-position-race" role="button" tabindex="0">
       <div class="panel-header">
         <div>
           <h3 class="panel-title">Classement cumulé</h3>
-          <p class="panel-subtitle">Total Stableford net sur tous les tours</p>
+          <p class="panel-subtitle">Total Stableford net sur tous les tours · cliquer pour voir la course des positions</p>
         </div>
+        <span class="tag">${state.showPositionRace ? "Masquer" : "Voir la courbe"}</span>
       </div>
       <div class="panel-body">
         ${renderLeaderboardTable(sortedLeaderboard("cumulative"))}
       </div>
     </div>
+    ${state.showPositionRace ? renderPositionRaceChart() : ""}
   `;
 }
 
@@ -2069,6 +2169,21 @@ function bindEvents() {
       event.preventDefault();
       event.stopPropagation();
       closeAugustaMode();
+    });
+  });
+
+  document.querySelectorAll('[data-action="toggle-position-race"]').forEach((panel) => {
+    panel.addEventListener("click", () => {
+      state.showPositionRace = !state.showPositionRace;
+      saveLocalOnly();
+      render();
+    });
+    panel.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      state.showPositionRace = !state.showPositionRace;
+      saveLocalOnly();
+      render();
     });
   });
 
