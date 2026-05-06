@@ -1149,6 +1149,7 @@ function leaderboardTimeline() {
       return a.name.localeCompare(b.name);
     });
     ranking.forEach((player, rankIndex) => {
+      if (played.get(player.id) <= lines.get(player.id).length) return;
       lines.get(player.id).push({
         step: stepIndex + 1,
         rank: rankIndex + 1,
@@ -1163,6 +1164,7 @@ function leaderboardTimeline() {
 
 function renderPositionRaceChart() {
   const { sequence, lines, totals } = leaderboardTimeline();
+  const chartPlayers = state.players.filter((player) => lines.get(player.id).length);
   const width = 1040;
   const height = 420;
   const padding = { top: 34, right: 112, bottom: 42, left: 44 };
@@ -1174,6 +1176,19 @@ function renderPositionRaceChart() {
   const yForRank = (rank) => padding.top + ((rank - 1) / Math.max(1, maxRank - 1)) * chartHeight;
   const rankedPlayers = [...state.players].sort((a, b) => totals.get(b.id) - totals.get(a.id) || a.name.localeCompare(b.name));
   const playerRank = new Map(rankedPlayers.map((player, index) => [player.id, index + 1]));
+
+  if (!chartPlayers.length) {
+    return `
+      <div class="panel position-race-panel">
+        <div class="panel-header">
+          <div>
+            <h3 class="panel-title">Course des positions</h3>
+            <p class="panel-subtitle">La courbe apparaîtra dès les premiers scores saisis.</p>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   return `
     <div class="panel position-race-panel">
@@ -1194,7 +1209,7 @@ function renderPositionRaceChart() {
             <line x1="${xForStep(step)}" y1="${padding.top}" x2="${xForStep(step)}" y2="${height - padding.bottom}" class="race-grid vertical"></line>
             <text x="${xForStep(step)}" y="${height - 16}" class="race-axis" text-anchor="middle">${step}</text>
           `).join("")}
-          ${state.players.map((player, index) => {
+          ${chartPlayers.map((player, index) => {
             const points = lines.get(player.id).map((point) => `${xForStep(point.step)},${yForRank(point.rank)}`).join(" ");
             const last = lines.get(player.id).at(-1);
             const color = colors[index % colors.length];
@@ -1530,6 +1545,7 @@ function renderScoreEntry() {
         <div class="panel-body">
           <div class="empty">${isPlayerLogin() ? "Tu n'es pas encore affecté à une partie sur ce tour." : "Crée d'abord les parties de ce tour pour démarrer la saisie."}</div>
           <div class="actions">
+            ${renderRecipeImportButton()}
             ${isPlayerLogin() ? "" : `<button class="btn primary" data-view="groups">Créer ou modifier les parties</button>`}
           </div>
         </div>
@@ -1556,6 +1572,7 @@ function renderScoreEntry() {
           <h3 class="panel-title">Saisie des scores</h3>
           <p class="panel-subtitle">Tour ${round.number} · ${course.name}</p>
         </div>
+        ${renderRecipeImportButton()}
       </div>
       <div class="panel-body">
         <div class="controls">
@@ -1588,11 +1605,118 @@ function renderScoreEntry() {
         <div class="actions">
           <button class="btn primary" data-action="validate-round">Valider le tour et appliquer les handicaps</button>
           <button class="btn" data-view="groups">Créer ou modifier les parties</button>
+          ${renderRecipeImportButton()}
           ${isAdmin() ? `<button class="btn danger" data-action="reset-scores">Effacer les scores du prototype</button>` : ""}
         </div>
       </div>
     </div>
   `;
+}
+
+function renderRecipeImportButton() {
+  if (!isAdmin()) return "";
+  return `
+    <label class="btn import-recipe-btn">
+      Importer fichier recette CSV
+      <input class="file-input-hidden" type="file" accept=".csv,text/csv" data-import-scores />
+    </label>
+  `;
+}
+
+function parseCsvRows(text) {
+  return text.trim().split(/\r?\n/).map((line) => {
+    const cells = [];
+    let cell = "";
+    let quoted = false;
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index];
+      const next = line[index + 1];
+      if (char === '"' && quoted && next === '"') {
+        cell += '"';
+        index += 1;
+      } else if (char === '"') {
+        quoted = !quoted;
+      } else if (char === ";" && !quoted) {
+        cells.push(cell);
+        cell = "";
+      } else {
+        cell += char;
+      }
+    }
+    cells.push(cell);
+    return cells;
+  });
+}
+
+function playerByImportedName(name) {
+  const normalized = normalizePalmaresName(name);
+  return state.players.find((player) => normalizePalmaresName(player.name) === normalized || palmaresPlayerId(name) === player.id);
+}
+
+function importScoreCsv(text) {
+  if (!isAdmin()) return requireAdminMessage();
+  const rows = parseCsvRows(text);
+  const header = rows.shift() || [];
+  const indexOf = (label) => header.findIndex((item) => normalizePalmaresName(item) === normalizePalmaresName(label));
+  const tourIndex = indexOf("Tour");
+  const partieIndex = indexOf("Partie");
+  const marqueurIndex = indexOf("Marqueur");
+  const joueurIndex = indexOf("Joueur");
+  if ([tourIndex, partieIndex, marqueurIndex, joueurIndex].some((index) => index < 0)) {
+    alert("Fichier non reconnu : il faut les colonnes Tour, Partie, Marqueur et Joueur.");
+    return;
+  }
+
+  const groupsByRound = new Map();
+  let importedScores = 0;
+  rows.forEach((row) => {
+    const round = state.rounds.find((item) => item.number === Number(row[tourIndex]));
+    const player = playerByImportedName(row[joueurIndex]);
+    if (!round || !player) return;
+    if (!groupsByRound.has(round.id)) groupsByRound.set(round.id, new Map());
+    const groupName = row[partieIndex] || "Partie";
+    const groups = groupsByRound.get(round.id);
+    if (!groups.has(groupName)) {
+      groups.set(groupName, {
+        id: `${round.id}-import-${groups.size + 1}`,
+        name: groupName,
+        markerName: row[marqueurIndex],
+        playerIds: [],
+      });
+    }
+    const group = groups.get(groupName);
+    if (!group.playerIds.includes(player.id)) group.playerIds.push(player.id);
+
+    for (let holeNumber = 1; holeNumber <= 18; holeNumber += 1) {
+      const scoreIndex = indexOf(`Trou ${holeNumber}`);
+      const value = Number(row[scoreIndex]);
+      if (scoreIndex < 0 || Number.isNaN(value) || value < 1) continue;
+      state.scores[roundScoreKey(round.id, player.id, holeNumber)] = value;
+      importedScores += 1;
+    }
+    state.selectedRoundId = round.id;
+  });
+
+  groupsByRound.forEach((groups, roundId) => {
+    state.groups[roundId] = [...groups.values()].map((group, index) => {
+      const marker = playerByImportedName(group.markerName);
+      const playerIds = group.playerIds.slice(0, 4);
+      while (playerIds.length < 4) playerIds.push("");
+      return {
+        id: `${roundId}-g${index + 1}`,
+        name: group.name,
+        markerId: marker && playerIds.includes(marker.id) ? marker.id : playerIds.find(Boolean) || "",
+        playerIds,
+      };
+    });
+  });
+
+  state.selectedGroupId = groupsForRound(state.selectedRoundId)[0]?.id || "";
+  state.activeMobileHole = 1;
+  state.activeScoreCell = null;
+  saveState();
+  render();
+  alert(`${importedScores} scores importés.`);
 }
 
 function renderHoleInput(roundId, player, course, hole, handicapValue) {
@@ -2491,6 +2615,16 @@ function bindEvents() {
 
   const reset = document.querySelector('[data-action="reset-scores"]');
   if (reset) reset.addEventListener("click", resetScores);
+
+  document.querySelectorAll("[data-import-scores]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => importScoreCsv(String(reader.result || ""));
+      reader.readAsText(file);
+    });
+  });
 }
 
 if (isAuthenticated) {
