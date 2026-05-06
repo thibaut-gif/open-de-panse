@@ -194,6 +194,7 @@ function createInitialState() {
     selectedRoundId: "r1",
     selectedGroupId: "",
     selectedPlayerId: "p1",
+    homePreviewRoundId: "",
     activeScoreCell: null,
     activeMobileHole: 1,
     seenNotificationCount: 0,
@@ -262,6 +263,7 @@ function applyRemoteState(data) {
     selectedRoundId: state.selectedRoundId,
     selectedGroupId: state.selectedGroupId,
     selectedPlayerId: state.selectedPlayerId,
+    homePreviewRoundId: state.homePreviewRoundId,
     activeScoreCell: state.activeScoreCell,
     activeMobileHole: state.activeMobileHole,
     seenNotificationCount: state.seenNotificationCount,
@@ -705,18 +707,22 @@ function render() {
     <div class="app-shell">
       ${renderTopbar()}
       <main class="container">
-        <section class="view ${state.activeView === "home" ? "active" : ""}">${renderHome()}</section>
-        <section class="view ${state.activeView === "leaderboard" ? "active" : ""}">${renderLeaderboard()}</section>
-        <section class="view ${state.activeView === "score" ? "active" : ""}">${renderScoreEntry()}</section>
-        <section class="view ${state.activeView === "groups" ? "active" : ""}">${renderGroups()}</section>
-        <section class="view ${state.activeView === "players" ? "active" : ""}">${renderPlayers()}</section>
-        <section class="view ${state.activeView === "underground" ? "active" : ""}">${renderUnderground()}</section>
-        <section class="view ${state.activeView === "notifications" ? "active" : ""}">${renderNotifications()}</section>
+        <section class="view active">${renderActiveView()}</section>
       </main>
       ${renderTabs()}
     </div>
   `;
   bindEvents();
+}
+
+function renderActiveView() {
+  if (state.activeView === "leaderboard") return renderLeaderboard();
+  if (state.activeView === "score") return renderScoreEntry();
+  if (state.activeView === "groups") return renderGroups();
+  if (state.activeView === "players") return renderPlayers();
+  if (state.activeView === "underground") return renderUnderground();
+  if (state.activeView === "notifications") return renderNotifications();
+  return renderHome();
 }
 
 function renderLogin() {
@@ -864,7 +870,10 @@ function renderHome() {
             <p class="panel-subtitle">Le calendrier réel du MVP</p>
           </div>
         </div>
-        <div class="panel-body cards">${state.rounds.map(renderRoundCard).join("")}</div>
+        <div class="panel-body cards">
+          ${state.rounds.map(renderRoundCard).join("")}
+          ${state.homePreviewRoundId ? renderCourseScorecardPreview(state.homePreviewRoundId) : ""}
+        </div>
       </div>
       <div class="panel">
         <div class="panel-header">
@@ -958,7 +967,7 @@ function renderHomeRankingTile(row, rank, tone) {
 function renderRoundCard(round) {
   const course = state.courses.find((item) => item.id === round.courseId);
   return `
-    <button class="round-card ${state.selectedRoundId === round.id ? "active" : ""}" data-round="${round.id}">
+    <button class="round-card ${state.homePreviewRoundId === round.id ? "active" : ""}" data-home-round="${round.id}">
       <div class="card-top">
         <div>
           <strong>Tour ${round.number} · ${course.name}</strong>
@@ -968,6 +977,49 @@ function renderRoundCard(round) {
         <span class="tag green">Par ${course.tees[0].par}</span>
       </div>
     </button>
+  `;
+}
+
+function renderCourseScorecardPreview(roundId) {
+  const round = state.rounds.find((item) => item.id === roundId);
+  const course = courseForRound(roundId);
+  const cells = course.holes.map((hole) => ({ hole, gross: "", points: null }));
+  return `
+    <div class="course-preview">
+      <div class="card-top">
+        <div>
+          <strong>Carte du parcours · Tour ${round.number}</strong>
+          <div class="small">${course.club} · ${course.name}</div>
+        </div>
+        <span class="tag green">Par ${course.tees[0].par}</span>
+      </div>
+      ${renderCourseNine("Aller", cells.slice(0, 9))}
+      ${renderCourseNine("Retour", cells.slice(9, 18))}
+    </div>
+  `;
+}
+
+function renderCourseNine(label, cells) {
+  return `
+    <div class="scorecard-nine">
+      <div class="scorecard-nine-title">${label}</div>
+      <table class="scorecard-table compact">
+        <tbody>
+          <tr>
+            <th>Trou</th>
+            ${cells.map((cell) => `<th>${cell.hole.number}</th>`).join("")}
+          </tr>
+          <tr>
+            <td>Par</td>
+            ${cells.map((cell) => `<td>${cell.hole.par}</td>`).join("")}
+          </tr>
+          <tr>
+            <td>HCP</td>
+            ${cells.map((cell) => `<td>${cell.hole.strokeIndex}</td>`).join("")}
+          </tr>
+        </tbody>
+      </table>
+    </div>
   `;
 }
 
@@ -1761,10 +1813,20 @@ function bindEvents() {
     });
   });
 
+  document.querySelectorAll("[data-home-round]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.homePreviewRoundId = state.homePreviewRoundId === button.dataset.homeRound ? "" : button.dataset.homeRound;
+      saveState();
+      render();
+    });
+  });
+
   document.querySelectorAll('[data-action="select-round"]').forEach((select) => {
     select.addEventListener("change", () => {
       state.selectedRoundId = select.value;
       state.selectedGroupId = "";
+      state.activeScoreCell = null;
+      state.activeMobileHole = 1;
       saveState();
       render();
     });

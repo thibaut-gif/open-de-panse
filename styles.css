@@ -578,12 +578,18 @@ button {
 .course-card,
 .player-card,
 .group-card,
+.course-preview,
 .notification,
 .round-card {
   padding: 13px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
+}
+
+.course-preview {
+  border-color: #bdd2c6;
+  background: #f8faf8;
 }
 
 .notification.highlight {
