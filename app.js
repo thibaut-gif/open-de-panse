@@ -446,8 +446,10 @@ function activeGroupPlayers() {
 function startGroupScoreEntry(roundId, groupId) {
   const group = groupsForRound(roundId).find((item) => item.id === groupId);
   const firstPlayerId = group?.playerIds.find(Boolean);
+  const markerId = group?.markerId && group.playerIds.includes(group.markerId) ? group.markerId : firstPlayerId;
+  if (group && !group.markerId && markerId) group.markerId = markerId;
   state.selectedGroupId = groupId;
-  state.selectedPlayerId = firstPlayerId || state.selectedPlayerId;
+  state.selectedPlayerId = markerId || state.selectedPlayerId;
   state.activeMobileHole = 1;
   state.activeScoreCell = firstPlayerId ? { roundId, playerId: firstPlayerId, holeNumber: 1 } : null;
   state.activeView = "score";
@@ -1040,11 +1042,36 @@ function renderScoreEntry() {
   const round = selectedRound();
   const course = courseForRound(round.id);
   const groups = groupsForRound(round.id);
-  const groupPlayers = playersInSelectedGroup();
-  if (!groupPlayers.some((item) => item.id === state.selectedPlayerId)) {
-    state.selectedPlayerId = groupPlayers[0]?.id || state.players[0].id;
+  if (!groups.length) {
+    return `
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h3 class="panel-title">Saisie des scores</h3>
+            <p class="panel-subtitle">Tour ${round.number} · ${course.name}</p>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="empty">Crée d'abord les parties de ce tour pour démarrer la saisie.</div>
+          <div class="actions">
+            <button class="btn primary" data-view="groups">Créer ou modifier les parties</button>
+          </div>
+        </div>
+      </div>
+    `;
   }
-  const player = selectedPlayer();
+  if (!state.selectedGroupId || !groups.some((group) => group.id === state.selectedGroupId)) {
+    startGroupScoreEntry(round.id, groups[0].id);
+  }
+  const groupPlayers = playersInSelectedGroup();
+  const selectedGroup = groups.find((group) => group.id === state.selectedGroupId);
+  if (selectedGroup && (!selectedGroup.markerId || !selectedGroup.playerIds.includes(selectedGroup.markerId))) {
+    selectedGroup.markerId = groupPlayers[0]?.id || "";
+  }
+  if (selectedGroup?.markerId && state.selectedPlayerId !== selectedGroup.markerId) {
+    state.selectedPlayerId = selectedGroup.markerId;
+  }
+  const player = selectedPlayer() || groupPlayers[0] || state.players[0];
   const stats = playerRoundStats(player, round.id);
   return `
     <div class="panel">
@@ -1061,15 +1088,14 @@ function renderScoreEntry() {
             <select data-action="select-round">${state.rounds.map((item) => `<option value="${item.id}" ${item.id === round.id ? "selected" : ""}>Tour ${item.number} - ${courseName(item.courseId)}</option>`).join("")}</select>
           </div>
           <div class="field">
-            <label>Joueur</label>
-            <select data-action="select-player">${groupPlayers.map((item) => `<option value="${item.id}" ${item.id === player.id ? "selected" : ""}>${item.name}</option>`).join("")}</select>
-          </div>
-          <div class="field">
             <label>Partie</label>
             <select data-action="select-group">
-              <option value="">Tous les joueurs</option>
               ${groups.map((group) => `<option value="${group.id}" ${group.id === state.selectedGroupId ? "selected" : ""}>${group.name}</option>`).join("")}
             </select>
+          </div>
+          <div class="field">
+            <label>Marqueur</label>
+            <select data-action="select-marker">${groupPlayers.map((item) => `<option value="${item.id}" ${item.id === selectedGroup?.markerId ? "selected" : ""}>${item.name}</option>`).join("")}</select>
           </div>
           <div class="field">
             <label>Départ recommandé</label>
@@ -1082,11 +1108,7 @@ function renderScoreEntry() {
           <div class="metric"><strong>${stats.holesPlayed}/${course.holes.length}</strong><span>trous saisis</span></div>
           <div class="metric"><strong>${stats.handicapAfter ?? "-"}</strong><span>HCP après tour</span></div>
         </div>
-        ${state.selectedGroupId ? renderGroupScoreGrid(round.id, course, groupPlayers) : `
-          <div class="scorecard">
-            ${course.holes.map((hole) => renderHoleInput(round.id, player, course, hole, stats.handicapValue)).join("")}
-          </div>
-        `}
+        ${renderGroupScoreGrid(round.id, course, groupPlayers)}
         <div class="actions">
           <button class="btn primary" data-action="validate-round">Valider le tour et appliquer les handicaps</button>
           <button class="btn" data-view="groups">Créer ou modifier les parties</button>
@@ -1680,6 +1702,16 @@ function bindEvents() {
 
   document.querySelectorAll('[data-action="select-player"]').forEach((select) => {
     select.addEventListener("change", () => {
+      state.selectedPlayerId = select.value;
+      saveState();
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-action="select-marker"]').forEach((select) => {
+    select.addEventListener("change", () => {
+      const group = groupsForRound(state.selectedRoundId).find((item) => item.id === state.selectedGroupId);
+      if (group && group.playerIds.includes(select.value)) group.markerId = select.value;
       state.selectedPlayerId = select.value;
       saveState();
       render();
