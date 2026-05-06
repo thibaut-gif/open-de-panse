@@ -833,6 +833,10 @@ button {
   align-items: end;
 }
 
+.file-input-hidden {
+  display: none;
+}
+
 .course-card,
 .player-card,
 .group-card,
