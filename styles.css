@@ -206,6 +206,19 @@ button {
   overflow: hidden;
 }
 
+.panel-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.panel-button:hover {
+  border-color: #95c7aa;
+}
+
 .panel-header {
   display: flex;
   gap: 12px;
@@ -570,9 +583,133 @@ button {
   font-weight: 900;
 }
 
+.augusta-panel {
+  margin-top: 14px;
+}
+
+.augusta-fullscreen {
+  min-height: 100vh;
+  padding: 12px;
+  background: #0b4b2b;
+  color: white;
+  cursor: pointer;
+}
+
+.augusta-fullscreen .augusta-panel {
+  margin-top: 10px;
+  color: var(--ink);
+}
+
+.augusta-fullscreen-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.augusta-fullscreen-header h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.augusta-fullscreen-header p {
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.augusta-fullscreen .augusta-table {
+  min-width: 1000px;
+  font-size: 13px;
+}
+
+.augusta-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.augusta-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+  background: #f6f8ef;
+  font-size: 12px;
+  border: 6px solid #d8d0aa;
+  box-shadow: inset 0 0 0 2px #23472f;
+}
+
+.augusta-table th,
+.augusta-table td {
+  padding: 7px 6px;
+  border: 1px solid #23472f;
+  text-align: center;
+}
+
+.augusta-table th {
+  background: #f6f8ef;
+  color: #1b1f1c;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.augusta-table th:nth-child(2),
+.augusta-table td:nth-child(2) {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 110px;
+  background: #f6f8ef;
+  text-align: left;
+  font-weight: 900;
+}
+
+.augusta-table th:nth-child(2) {
+  background: #f6f8ef;
+}
+
+.augusta-red {
+  color: #b51625;
+  font-weight: 950;
+}
+
+.augusta-blue {
+  color: #145db7;
+  font-weight: 950;
+}
+
+.augusta-black {
+  color: #111;
+  font-weight: 900;
+}
+
 .cards {
   display: grid;
   gap: 10px;
+}
+
+.admin-tools {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8faf8;
+}
+
+.toggle-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-weight: 800;
+}
+
+.add-player-form {
+  display: grid;
+  grid-template-columns: 1fr 130px auto;
+  gap: 10px;
+  align-items: end;
 }
 
 .course-card,
@@ -1173,6 +1310,24 @@ button {
 
   .controls {
     grid-template-columns: 1fr;
+  }
+
+  .add-player-form {
+    grid-template-columns: 1fr;
+  }
+
+  .augusta-table {
+    min-width: 760px;
+    font-size: 10px;
+  }
+
+  .augusta-table th,
+  .augusta-table td {
+    padding: 5px 4px;
+  }
+
+  .app-shell > .container > .view > .augusta-panel {
+    display: none;
   }
 
   .home-ranking {

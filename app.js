@@ -1,6 +1,7 @@
 const STORAGE_KEY = "open-de-panse-mvp-state-v3";
 const AUTH_KEY = "open-de-panse-auth-v1";
 const ROLE_KEY = "open-de-panse-role-v1";
+const PLAYER_KEY = "open-de-panse-player-v1";
 const PARTICIPANT_PASSWORD = "panse2026";
 const ADMIN_PASSWORD = "panseadmin2026";
 const CLIENT_ID_KEY = "open-de-panse-client-id-v1";
@@ -34,6 +35,21 @@ const playersSeed = [
   ["p11", "La Roquette", 32],
   ["p12", "Greg'z", 16],
 ].map(([id, name, handicap]) => ({ id, name, handicap, initialHandicap: handicap }));
+
+const playerPasswords = {
+  p1: "juju2026",
+  p2: "thib2026",
+  p3: "goulu2026",
+  p4: "gege2026",
+  p5: "nanou2026",
+  p6: "pierrot2026",
+  p7: "lutcho2026",
+  p8: "nonoz2026",
+  p9: "ben2026",
+  p10: "manu2026",
+  p11: "laroquette2026",
+  p12: "gregz2026",
+};
 
 const previousSeedHandicaps = {
   p4: 38,
@@ -146,6 +162,7 @@ const palmaresSeed = [
 let state = loadState();
 let isAuthenticated = localStorage.getItem(AUTH_KEY) === "ok";
 let currentRole = localStorage.getItem(ROLE_KEY) || "participant";
+let currentPlayerId = localStorage.getItem(PLAYER_KEY) || "";
 let remoteReady = false;
 let isApplyingRemote = false;
 let syncTimer = null;
@@ -198,6 +215,7 @@ function createInitialState() {
     activeScoreCell: null,
     activeMobileHole: 1,
     seenNotificationCount: 0,
+    anonymizeParticipantLeaderboards: true,
     rounds: roundsSeed,
     courses: coursesSeed,
     players: normalizePlayers(playersSeed),
@@ -247,6 +265,7 @@ function publicState() {
     validatedHoles: state.validatedHoles,
     notifications: state.notifications,
     validatedRounds: state.validatedRounds,
+    anonymizeParticipantLeaderboards: state.anonymizeParticipantLeaderboards,
   };
 }
 
@@ -703,6 +722,11 @@ function render() {
     bindLogin();
     return;
   }
+  if (state.activeView === "augusta") {
+    document.getElementById("app").innerHTML = renderAugustaFullscreen();
+    bindEvents();
+    return;
+  }
   document.getElementById("app").innerHTML = `
     <div class="app-shell">
       ${renderTopbar()}
@@ -716,6 +740,7 @@ function render() {
 }
 
 function renderActiveView() {
+  if (state.activeView === "augusta") return renderAugustaFullscreen();
   if (state.activeView === "leaderboard") return renderLeaderboard();
   if (state.activeView === "score") return renderScoreEntry();
   if (state.activeView === "groups") return renderGroups();
@@ -749,6 +774,15 @@ function normalizePassword(value) {
   return String(value).toLowerCase().replace(/\s+/g, "");
 }
 
+function playerPassword(player) {
+  if (playerPasswords[player.id]) return playerPasswords[player.id];
+  return `${normalizePassword(player.name).replace(/[^a-z0-9]/g, "")}2026`;
+}
+
+function playerFromPassword(value) {
+  return state.players.find((player) => normalizePassword(playerPassword(player)) === value);
+}
+
 function bindLogin() {
   const form = document.querySelector("[data-login-form]");
   const input = document.querySelector("[data-login-password]");
@@ -759,7 +793,23 @@ function bindLogin() {
     if (value === ADMIN_PASSWORD || value === "adminpanse2026") {
       localStorage.setItem(AUTH_KEY, "ok");
       localStorage.setItem(ROLE_KEY, "admin");
+      localStorage.removeItem(PLAYER_KEY);
       currentRole = "admin";
+      currentPlayerId = "";
+      isAuthenticated = true;
+      startRemoteSync();
+      render();
+      return;
+    }
+    const player = playerFromPassword(value);
+    if (player) {
+      localStorage.setItem(AUTH_KEY, "ok");
+      localStorage.setItem(ROLE_KEY, "player");
+      localStorage.setItem(PLAYER_KEY, player.id);
+      currentRole = "player";
+      currentPlayerId = player.id;
+      state.selectedPlayerId = player.id;
+      state.activeView = "score";
       isAuthenticated = true;
       startRemoteSync();
       render();
@@ -768,7 +818,9 @@ function bindLogin() {
     if (value === PARTICIPANT_PASSWORD || value === "pense2026") {
       localStorage.setItem(AUTH_KEY, "ok");
       localStorage.setItem(ROLE_KEY, "participant");
+      localStorage.removeItem(PLAYER_KEY);
       currentRole = "participant";
+      currentPlayerId = "";
       isAuthenticated = true;
       startRemoteSync();
       render();
@@ -781,6 +833,24 @@ function bindLogin() {
 
 function isAdmin() {
   return currentRole === "admin";
+}
+
+function isPlayerLogin() {
+  return currentRole === "player" && Boolean(currentPlayerId);
+}
+
+function currentPlayer() {
+  return state.players.find((player) => player.id === currentPlayerId);
+}
+
+function shouldAnonymizeLeaderboards() {
+  return !isAdmin() && state.anonymizeParticipantLeaderboards !== false;
+}
+
+function displayPlayerName(player, rank) {
+  if (!shouldAnonymizeLeaderboards()) return player.name;
+  if (isPlayerLogin() && player.id === currentPlayerId) return player.name;
+  return `Joueur ${rank}`;
 }
 
 function requireAdminMessage() {
@@ -809,7 +879,7 @@ function renderTopbar() {
           </div>
         </div>
         <div class="topbar-actions">
-          <span class="status-pill">${currentRole === "admin" ? "Admin" : "Participant"} · ${remoteReady ? "Live" : "Local"}</span>
+          <span class="status-pill">${isAdmin() ? "Admin" : isPlayerLogin() ? currentPlayer()?.name || "Joueur" : "Participant"} · ${remoteReady ? "Live" : "Local"}</span>
           <button class="btn logout-btn" data-action="logout">Sortir</button>
         </div>
       </div>
@@ -875,16 +945,17 @@ function renderHome() {
           ${state.homePreviewRoundId ? renderCourseScorecardPreview(state.homePreviewRoundId) : ""}
         </div>
       </div>
-      <div class="panel">
+      <button class="panel panel-button" data-action="open-augusta">
         <div class="panel-header">
           <div>
             <h3 class="panel-title">Classement cumulé</h3>
-            <p class="panel-subtitle">Les 3 premiers et les 3 derniers</p>
+            <p class="panel-subtitle">Toucher pour ouvrir le leaderboard Augusta</p>
           </div>
         </div>
         <div class="panel-body">${renderHomeRankingSnapshot(cumulative)}</div>
-      </div>
+      </button>
     </div>
+    ${renderAugustaLeaderboard()}
     <div class="panel" style="margin-top:14px">
       <div class="panel-header">
         <div>
@@ -908,6 +979,108 @@ function renderHome() {
       </div>
     </div>
   `;
+}
+
+function augustaRows() {
+  return state.players.map((player) => {
+    const holes = Array.from({ length: 18 }, (_, index) => {
+      const holeNumber = index + 1;
+      return state.rounds.reduce((cell, round) => {
+        const course = courseForRound(round.id);
+        const hole = course.holes.find((item) => item.number === holeNumber);
+        const gross = getGross(round.id, player.id, holeNumber);
+        if (!hole || !gross) return cell;
+        const stats = playerRoundStats(player, round.id);
+        const strokes = strokesOnHole(stats.handicapValue, hole.strokeIndex);
+        cell.points += stablefordPoints(hole.par, gross, strokes) || 0;
+        cell.played += 1;
+        return cell;
+      }, { points: 0, played: 0 });
+    });
+    const total = holes.reduce((sum, value) => sum + value.points, 0);
+    return { player, holes, total };
+  }).sort((a, b) => b.total - a.total);
+}
+
+function augustaCellClass(cell) {
+  if (!cell.played) return "";
+  const parPoints = cell.played * 2;
+  if (cell.points > parPoints) return "augusta-red";
+  if (cell.points < parPoints) return "augusta-blue";
+  return "augusta-black";
+}
+
+function renderAugustaLeaderboard() {
+  const rows = augustaRows();
+  return `
+    <div class="panel augusta-panel">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">Leaderboard Augusta</h3>
+          <p class="panel-subtitle">Points Stableford cumulés par numéro de trou</p>
+        </div>
+      </div>
+      <div class="augusta-scroll">
+        <table class="augusta-table">
+          <thead>
+            <tr>
+              <th>Pos</th>
+              <th>Joueur</th>
+              ${Array.from({ length: 18 }, (_, index) => `<th>${index + 1}</th>`).join("")}
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row, index) => `
+              <tr>
+                <td>${index + 1}</td>
+                <td>${displayPlayerName(row.player, index + 1)}</td>
+                ${row.holes.map((cell) => `<td class="${augustaCellClass(cell)}">${cell.points || ""}</td>`).join("")}
+                <td><strong>${row.total}</strong></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderAugustaFullscreen() {
+  return `
+    <div class="augusta-fullscreen" data-action="close-augusta">
+      <div class="augusta-fullscreen-header">
+        <div>
+          <h1>Leaderboard Augusta</h1>
+          <p>Points Stableford cumulés par trou</p>
+        </div>
+        <button class="btn" data-action="close-augusta">Retour</button>
+      </div>
+      ${renderAugustaLeaderboard()}
+    </div>
+  `;
+}
+
+async function requestLandscapeMode() {
+  try {
+    if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+      await document.documentElement.requestFullscreen();
+    }
+    if (screen.orientation?.lock) {
+      await screen.orientation.lock("landscape");
+    }
+  } catch {
+    // Certains navigateurs mobiles refusent le verrouillage paysage, l'affichage reste utilisable.
+  }
+}
+
+async function exitLandscapeMode() {
+  try {
+    if (screen.orientation?.unlock) screen.orientation.unlock();
+    if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen();
+  } catch {
+    // Sortie plein écran non critique.
+  }
 }
 
 function renderPalmaresMetric(type) {
@@ -953,7 +1126,7 @@ function renderHomeRankingSnapshot(cumulative) {
 }
 
 function renderHomeRankingTile(row, rank, tone) {
-  const displayName = isAdmin() ? row.player.name : `Joueur ${rank}`;
+  const displayName = displayPlayerName(row.player, rank);
   return `
     <div class="home-ranking-tile ${tone}">
       <span class="home-rank">#${rank}</span>
@@ -1054,7 +1227,7 @@ function renderLeaderboard() {
 }
 
 function renderLeaderboardTable(rows) {
-  if (!isAdmin()) {
+  if (shouldAnonymizeLeaderboards()) {
     return `
       <table class="leaderboard">
         <thead><tr><th>#</th><th>Classement</th><th>Pts</th><th>Trous</th></tr></thead>
@@ -1062,7 +1235,7 @@ function renderLeaderboardTable(rows) {
           ${rows.map((row, index) => `
             <tr>
               <td class="rank">${index + 1}</td>
-              <td><div class="player-name">Joueur ${index + 1}</div></td>
+              <td><div class="player-name">${displayPlayerName(row.player, index + 1)}</div></td>
               <td><span class="score-big">${row.stats.points}</span></td>
               <td>${row.stats.holesPlayed}/${courseForRound(state.selectedRoundId).holes.length}</td>
             </tr>
@@ -1126,7 +1299,7 @@ function renderGrossLeaderboard() {
         ${rows.map((row, index) => `
           <tr>
             <td class="rank">${index + 1}</td>
-            <td><div class="player-name">${row.player.name}</div></td>
+            <td><div class="player-name">${displayPlayerName(row.player, index + 1)}</div></td>
             <td><span class="score-big">${row.stats.grossTotal || "-"}</span></td>
             <td class="${row.stats.relative <= 0 ? "positive" : "negative"}">${row.stats.holesPlayed ? formatRelative(row.stats.relative) : "-"}</td>
             <td>${row.stats.holesPlayed}</td>
@@ -1151,7 +1324,7 @@ function renderUndergroundTop(key, label) {
         ${rows.length ? rows.map((row, index) => `
           <div class="underground-rank">
             <span class="rank">#${index + 1}</span>
-            <strong>${row.player.name}</strong>
+            <strong>${displayPlayerName(row.player, index + 1)}</strong>
             <span class="score-big">${row.stats[key]}</span>
           </div>
         `).join("") : `<div class="empty">Aucun score pour l'instant.</div>`}
@@ -1163,7 +1336,7 @@ function renderUndergroundTop(key, label) {
 function renderScoreEntry() {
   const round = selectedRound();
   const course = courseForRound(round.id);
-  const groups = groupsForRound(round.id);
+  const groups = visibleGroupsForRound(round.id);
   if (!groups.length) {
     return `
       <div class="panel">
@@ -1174,9 +1347,9 @@ function renderScoreEntry() {
           </div>
         </div>
         <div class="panel-body">
-          <div class="empty">Crée d'abord les parties de ce tour pour démarrer la saisie.</div>
+          <div class="empty">${isPlayerLogin() ? "Tu n'es pas encore affecté à une partie sur ce tour." : "Crée d'abord les parties de ce tour pour démarrer la saisie."}</div>
           <div class="actions">
-            <button class="btn primary" data-view="groups">Créer ou modifier les parties</button>
+            ${isPlayerLogin() ? "" : `<button class="btn primary" data-view="groups">Créer ou modifier les parties</button>`}
           </div>
         </div>
       </div>
@@ -1404,7 +1577,9 @@ function renderPlayers() {
           <p class="panel-subtitle">Handicap, départ recommandé et coups rendus sur le tour sélectionné</p>
         </div>
       </div>
-      <div class="panel-body cards">
+      <div class="panel-body">
+        ${isAdmin() ? renderPlayerAdminTools() : ""}
+        <div class="cards">
         ${state.players.map((player) => {
           const stats = playerRoundStats(player, round.id);
           const initialHandicap = player.initialHandicap ?? player.handicap;
@@ -1431,7 +1606,31 @@ function renderPlayers() {
             </div>
           `;
         }).join("")}
+        </div>
       </div>
+    </div>
+  `;
+}
+
+function renderPlayerAdminTools() {
+  return `
+    <div class="admin-tools">
+      <label class="toggle-row">
+        <input type="checkbox" data-setting="anonymize-leaderboards" ${state.anonymizeParticipantLeaderboards !== false ? "checked" : ""} />
+        <span>Classements anonymes pour les participants</span>
+      </label>
+      <form class="add-player-form" data-add-player-form>
+        <div class="field">
+          <label>Nouveau joueur</label>
+          <input type="text" data-new-player-name placeholder="Nom" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label>Handicap</label>
+          <input type="tel" inputmode="decimal" data-new-player-handicap placeholder="Ex. 24" autocomplete="off" />
+        </div>
+        <button class="btn primary" type="submit">Ajouter</button>
+      </form>
+      <p class="small">Code joueur généré : prénom sans espace + 2026, par exemple <strong>juju2026</strong>.</p>
     </div>
   `;
 }
@@ -1550,7 +1749,7 @@ function renderScoreMark(cell) {
 function renderGroups() {
   const round = selectedRound();
   const course = courseForRound(round.id);
-  const groups = groupsForRound(round.id);
+  const groups = visibleGroupsForRound(round.id);
   const assigned = new Set(groups.flatMap((group) => group.playerIds.filter(Boolean)));
   const unassigned = state.players.filter((player) => !assigned.has(player.id));
   return `
@@ -1660,6 +1859,12 @@ function groupsForRound(roundId) {
   return state.groups[roundId];
 }
 
+function visibleGroupsForRound(roundId) {
+  const groups = groupsForRound(roundId);
+  if (!isPlayerLogin()) return groups;
+  return groups.filter((group) => group.playerIds.includes(currentPlayerId));
+}
+
 function groupForPlayer(roundId, playerId) {
   return groupsForRound(roundId).find((group) => group.playerIds.includes(playerId));
 }
@@ -1685,6 +1890,22 @@ function addGroup(roundId) {
     name: `Partie ${groups.length + 1}`,
     playerIds: ["", "", ""],
     markerId: "",
+  });
+  saveState();
+  render();
+}
+
+function addPlayer(name, handicapValue) {
+  if (!isAdmin()) return requireAdminMessage();
+  const cleanName = name.trim();
+  const handicap = Number(String(handicapValue).replace(",", "."));
+  if (!cleanName || Number.isNaN(handicap) || handicap < 0) return;
+  const id = `p-${Date.now()}`;
+  state.players.push({
+    id,
+    name: cleanName,
+    handicap: Number(handicap.toFixed(1)),
+    initialHandicap: Number(handicap.toFixed(1)),
   });
   saveState();
   render();
@@ -1795,12 +2016,32 @@ function bindEvents() {
     button.addEventListener("click", () => {
       localStorage.removeItem(AUTH_KEY);
       localStorage.removeItem(ROLE_KEY);
+      localStorage.removeItem(PLAYER_KEY);
       isAuthenticated = false;
       currentRole = "participant";
+      currentPlayerId = "";
       remoteReady = false;
       clearInterval(remotePollTimer);
       clearTimeout(syncTimer);
       render();
+    });
+  });
+
+  document.querySelectorAll('[data-action="open-augusta"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeView = "augusta";
+      saveState();
+      render();
+      requestLandscapeMode();
+    });
+  });
+
+  document.querySelectorAll('[data-action="close-augusta"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeView = "home";
+      saveState();
+      render();
+      exitLandscapeMode();
     });
   });
 
@@ -1953,6 +2194,23 @@ function bindEvents() {
       ));
       saveState();
       render();
+    });
+  });
+
+  document.querySelectorAll('[data-setting="anonymize-leaderboards"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      if (!isAdmin()) return requireAdminMessage();
+      state.anonymizeParticipantLeaderboards = input.checked;
+      saveState();
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-add-player-form]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!isAdmin()) return requireAdminMessage();
+      addPlayer(form.querySelector("[data-new-player-name]").value, form.querySelector("[data-new-player-handicap]").value);
     });
   });
 
