@@ -371,6 +371,21 @@ function selectedRound() {
   return state.rounds.find((round) => round.id === state.selectedRoundId);
 }
 
+function roundOrdinalLabel(roundNumber) {
+  const labels = ["Premier", "Deuxième", "Troisième", "Quatrième"];
+  return labels[roundNumber - 1] || `Tour ${roundNumber}`;
+}
+
+function selectedRoundTitle() {
+  const round = selectedRound() || state.rounds[0];
+  return `${roundOrdinalLabel(round.number)} tour`;
+}
+
+function augustaRounds() {
+  const round = selectedRound() || state.rounds[0];
+  return state.rounds.filter((item) => item.number <= round.number);
+}
+
 function selectedPlayer() {
   return state.players.find((player) => player.id === state.selectedPlayerId);
 }
@@ -949,7 +964,7 @@ function renderHome() {
         <div class="panel-header">
           <div>
             <h3 class="panel-title">Classement cumulé</h3>
-            <p class="panel-subtitle">Toucher pour ouvrir le leaderboard Augusta</p>
+            <p class="panel-subtitle">Toucher pour ouvrir le leaderboard Milano 2026</p>
           </div>
         </div>
         <div class="panel-body">${renderHomeRankingSnapshot(cumulative)}</div>
@@ -982,10 +997,11 @@ function renderHome() {
 }
 
 function augustaRows() {
+  const rounds = augustaRounds();
   return state.players.map((player) => {
     const holes = Array.from({ length: 18 }, (_, index) => {
       const holeNumber = index + 1;
-      return state.rounds.reduce((cell, round) => {
+      return rounds.reduce((cell, round) => {
         const course = courseForRound(round.id);
         const hole = course.holes.find((item) => item.number === holeNumber);
         const gross = getGross(round.id, player.id, holeNumber);
@@ -1004,20 +1020,22 @@ function augustaRows() {
 
 function augustaCellClass(cell) {
   if (!cell.played) return "";
-  const parPoints = cell.played * 2;
-  if (cell.points > parPoints) return "augusta-red";
-  if (cell.points < parPoints) return "augusta-blue";
-  return "augusta-black";
+  if (cell.points >= 4) return "augusta-excellent";
+  if (cell.points === 3) return "augusta-good";
+  if (cell.points === 2) return "augusta-par";
+  if (cell.points === 1) return "augusta-low";
+  return "augusta-zero";
 }
 
 function renderAugustaLeaderboard() {
   const rows = augustaRows();
+  const round = selectedRound() || state.rounds[0];
   return `
     <div class="panel augusta-panel">
       <div class="panel-header">
         <div>
-          <h3 class="panel-title">Leaderboard Augusta</h3>
-          <p class="panel-subtitle">Points Stableford cumulés par numéro de trou</p>
+          <h3 class="panel-title">Leaderboard Milano 2026</h3>
+          <p class="panel-subtitle">${selectedRoundTitle()} · Points Stableford cumulés jusqu'au tour ${round.number}</p>
         </div>
       </div>
       <div class="augusta-scroll">
@@ -1035,7 +1053,7 @@ function renderAugustaLeaderboard() {
               <tr>
                 <td>${index + 1}</td>
                 <td>${displayPlayerName(row.player, index + 1)}</td>
-                ${row.holes.map((cell) => `<td class="${augustaCellClass(cell)}">${cell.points || ""}</td>`).join("")}
+                ${row.holes.map((cell) => `<td class="${augustaCellClass(cell)}">${cell.played ? cell.points : ""}</td>`).join("")}
                 <td><strong>${row.total}</strong></td>
               </tr>
             `).join("")}
@@ -1051,8 +1069,8 @@ function renderAugustaFullscreen() {
     <div class="augusta-fullscreen" data-action="close-augusta">
       <div class="augusta-fullscreen-header">
         <div>
-          <h1>Leaderboard Augusta</h1>
-          <p>Points Stableford cumulés par trou</p>
+          <h1>Leaderboard Milano 2026</h1>
+          <p>${selectedRoundTitle()} · points Stableford cumulés en live</p>
         </div>
         <button class="btn" data-action="close-augusta">Retour</button>
       </div>
@@ -1081,6 +1099,16 @@ async function exitLandscapeMode() {
   } catch {
     // Sortie plein écran non critique.
   }
+}
+
+async function closeAugustaMode() {
+  state.activeView = "home";
+  saveState();
+  await exitLandscapeMode();
+  render();
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  });
 }
 
 function renderPalmaresMetric(type) {
@@ -2037,11 +2065,10 @@ function bindEvents() {
   });
 
   document.querySelectorAll('[data-action="close-augusta"]').forEach((button) => {
-    button.addEventListener("click", () => {
-      state.activeView = "home";
-      saveState();
-      render();
-      exitLandscapeMode();
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeAugustaMode();
     });
   });
 

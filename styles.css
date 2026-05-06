@@ -668,19 +668,29 @@ button {
   background: #f6f8ef;
 }
 
-.augusta-red {
+.augusta-excellent {
   color: #b51625;
   font-weight: 950;
 }
 
-.augusta-blue {
+.augusta-good {
+  color: #111;
+  font-weight: 900;
+}
+
+.augusta-par {
+  color: #111;
+  font-weight: 900;
+}
+
+.augusta-low {
   color: #145db7;
   font-weight: 950;
 }
 
-.augusta-black {
-  color: #111;
-  font-weight: 900;
+.augusta-zero {
+  color: #145db7;
+  font-weight: 950;
 }
 
 .cards {
