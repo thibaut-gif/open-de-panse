@@ -628,7 +628,7 @@ button {
   height: 42px;
   flex: 0 0 42px;
   object-fit: cover;
-  object-position: center;
+  object-position: center 58%;
   border-radius: 50%;
   background: white;
   transform: scale(1.18);
@@ -783,7 +783,7 @@ button {
 .race-line {
   stroke-dasharray: 100;
   stroke-dashoffset: 100;
-  animation: drawRaceLine 2.8s ease-out forwards;
+  animation: drawRaceLine 7.2s ease-out forwards;
 }
 
 .race-dot,

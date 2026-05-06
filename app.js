@@ -1146,9 +1146,9 @@ function renderPositionRaceChart() {
             const last = lines.get(player.id).at(-1);
             const color = colors[index % colors.length];
             return `
-              <polyline class="race-line" points="${points}" pathLength="100" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" style="animation-delay:${index * 0.08}s"></polyline>
-              <circle class="race-dot" cx="${xForStep(last.step)}" cy="${yForRank(last.rank)}" r="4.5" fill="${color}" style="animation-delay:${2.8 + index * 0.08}s"></circle>
-              <text x="${width - padding.right + 12}" y="${yForRank(playerRank.get(player.id)) + 4}" fill="${color}" class="race-label" style="animation-delay:${2.9 + index * 0.08}s">${displayPlayerName(player, playerRank.get(player.id))}</text>
+              <polyline class="race-line" points="${points}" pathLength="100" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" style="animation-delay:${index * 0.12}s"></polyline>
+              <circle class="race-dot" cx="${xForStep(last.step)}" cy="${yForRank(last.rank)}" r="4.5" fill="${color}" style="animation-delay:${7.2 + index * 0.12}s"></circle>
+              <text x="${width - padding.right + 12}" y="${yForRank(playerRank.get(player.id)) + 4}" fill="${color}" class="race-label" style="animation-delay:${7.35 + index * 0.12}s">${displayPlayerName(player, playerRank.get(player.id))}</text>
             `;
           }).join("")}
           <text x="${padding.left}" y="20" class="race-title">Trou joué</text>
