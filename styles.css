@@ -646,6 +646,39 @@ button {
   font-weight: 900;
 }
 
+.score-mark {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 3px;
+  color: var(--ink);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.score-mark.circle {
+  border: 1.5px solid var(--green);
+  border-radius: 999px;
+}
+
+.score-mark.double-circle {
+  border: 1.5px solid var(--green);
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px white, 0 0 0 3.5px var(--green);
+}
+
+.score-mark.square {
+  border: 1.5px solid var(--red);
+  border-radius: 3px;
+}
+
+.score-mark.double-square {
+  border: 1.5px solid var(--red);
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px white, 0 0 0 3.5px var(--red);
+}
+
 .group-slots {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -1122,6 +1155,20 @@ button {
     font-size: 8px;
     letter-spacing: 0;
     line-height: 1;
+  }
+
+  .score-mark {
+    min-width: 14px;
+    height: 14px;
+    padding: 0 1px;
+  }
+
+  .score-mark.double-circle {
+    box-shadow: 0 0 0 1px white, 0 0 0 2px var(--green);
+  }
+
+  .score-mark.double-square {
+    box-shadow: 0 0 0 1px white, 0 0 0 2px var(--red);
   }
 
   .mobile-hole-entry {

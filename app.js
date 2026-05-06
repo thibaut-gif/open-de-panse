@@ -1090,7 +1090,7 @@ function renderScoreEntry() {
         <div class="actions">
           <button class="btn primary" data-action="validate-round">Valider le tour et appliquer les handicaps</button>
           <button class="btn" data-view="groups">Créer ou modifier les parties</button>
-          <button class="btn danger" data-action="reset-scores">Effacer les scores du prototype</button>
+          ${isAdmin() ? `<button class="btn danger" data-action="reset-scores">Effacer les scores du prototype</button>` : ""}
         </div>
       </div>
     </div>
@@ -1375,7 +1375,7 @@ function renderScorecardNine(label, cells) {
           </tr>
           <tr>
             <td>Brut</td>
-            ${cells.map((cell) => `<td>${cell.gross || "-"}</td>`).join("")}
+            ${cells.map((cell) => `<td>${renderScoreMark(cell)}</td>`).join("")}
           </tr>
           <tr>
             <td>Net</td>
@@ -1385,6 +1385,22 @@ function renderScorecardNine(label, cells) {
       </table>
     </div>
   `;
+}
+
+function scoreMarkClass(cell) {
+  if (!cell.gross) return "";
+  const diff = cell.gross - cell.hole.par;
+  if (diff <= -2) return "double-circle";
+  if (diff === -1) return "circle";
+  if (diff === 1) return "square";
+  if (diff >= 2) return "double-square";
+  return "";
+}
+
+function renderScoreMark(cell) {
+  if (!cell.gross) return "-";
+  const markClass = scoreMarkClass(cell);
+  return markClass ? `<span class="score-mark ${markClass}">${cell.gross}</span>` : cell.gross;
 }
 
 function renderGroups() {
