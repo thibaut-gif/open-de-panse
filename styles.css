@@ -617,6 +617,30 @@ button {
   color: rgba(255, 255, 255, 0.76);
 }
 
+.augusta-title-lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.augusta-logo {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 50%;
+  background: white;
+  transform: scale(1.18);
+  transform-origin: center;
+}
+
+.augusta-fullscreen .augusta-logo {
+  width: 54px;
+  height: 54px;
+  flex-basis: 54px;
+}
+
 .augusta-fullscreen .augusta-table {
   min-width: 1000px;
   font-size: 13px;
