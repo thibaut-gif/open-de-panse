@@ -1653,6 +1653,48 @@ function playerByImportedName(name) {
   return state.players.find((player) => normalizePalmaresName(player.name) === normalized || palmaresPlayerId(name) === player.id);
 }
 
+function clearImportedRound(roundId) {
+  Object.keys(state.scores).forEach((key) => {
+    if (key.startsWith(`${roundId}:`)) delete state.scores[key];
+  });
+  if (!state.validatedHoles) state.validatedHoles = {};
+  Object.keys(state.validatedHoles).forEach((key) => {
+    if (key.startsWith(`${roundId}:`)) delete state.validatedHoles[key];
+  });
+  state.notifications = state.notifications.filter((item) => item.roundId !== roundId);
+  if (state.validatedRounds) delete state.validatedRounds[roundId];
+}
+
+function validateImportedRound(roundId) {
+  const course = courseForRound(roundId);
+  const groups = groupsForRound(roundId);
+  groups.forEach((group) => {
+    course.holes.forEach((hole) => {
+      const players = playersInGroup(roundId, group.id);
+      const complete = players.length && players.every((player) => getGross(roundId, player.id, hole.number));
+      if (!complete) return;
+      state.validatedHoles[holeValidationKey(roundId, group.id, hole.number)] = true;
+      players.forEach((player) => {
+        maybeNotifyUnderPar(roundId, player.id, hole.number, getGross(roundId, player.id, hole.number));
+      });
+    });
+  });
+  const allComplete = state.players.every((player) => playerRoundStats(player, roundId).holesPlayed === course.holes.length);
+  if (allComplete) state.validatedRounds[roundId] = true;
+}
+
+function recalculateHandicapsFromValidatedRounds() {
+  state.players = state.players.map((player) => {
+    let current = player.initialHandicap ?? player.handicap;
+    for (const round of state.rounds) {
+      if (!state.validatedRounds[round.id]) continue;
+      const stats = playerRoundStatsFromHandicap(player, round.id, current);
+      if (stats.handicapAfter !== null) current = stats.handicapAfter;
+    }
+    return { ...player, handicap: current };
+  });
+}
+
 function importScoreCsv(text) {
   if (!isAdmin()) return requireAdminMessage();
   const rows = parseCsvRows(text);
@@ -1668,11 +1710,16 @@ function importScoreCsv(text) {
   }
 
   const groupsByRound = new Map();
+  const importedRoundIds = new Set();
   let importedScores = 0;
   rows.forEach((row) => {
     const round = state.rounds.find((item) => item.number === Number(row[tourIndex]));
     const player = playerByImportedName(row[joueurIndex]);
     if (!round || !player) return;
+    if (!importedRoundIds.has(round.id)) {
+      clearImportedRound(round.id);
+      importedRoundIds.add(round.id);
+    }
     if (!groupsByRound.has(round.id)) groupsByRound.set(round.id, new Map());
     const groupName = row[partieIndex] || "Partie";
     const groups = groupsByRound.get(round.id);
@@ -1711,12 +1758,14 @@ function importScoreCsv(text) {
     });
   });
 
+  importedRoundIds.forEach(validateImportedRound);
+  recalculateHandicapsFromValidatedRounds();
   state.selectedGroupId = groupsForRound(state.selectedRoundId)[0]?.id || "";
   state.activeMobileHole = 1;
   state.activeScoreCell = null;
   saveState();
   render();
-  alert(`${importedScores} scores importés.`);
+  alert(`${importedScores} scores importés. Tour validé si les 12 cartes sont complètes, handicaps recalculés.`);
 }
 
 function renderHoleInput(roundId, player, course, hole, handicapValue) {
