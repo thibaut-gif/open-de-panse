@@ -916,11 +916,31 @@ function palmaresPlayerId(name) {
 }
 
 function playerPalmares(player) {
-  return palmaresSeed.reduce((acc, row) => {
+  return competitionPalmaresRows().reduce((acc, row) => {
     if (palmaresPlayerId(row.greenJacket) === player.id) acc.wins.push(row.year);
     if (palmaresPlayerId(row.woodenSpoon) === player.id) acc.spoons.push(row.year);
     return acc;
   }, { wins: [], spoons: [] });
+}
+
+function isCompetitionComplete() {
+  return state.rounds.every((round) => state.validatedRounds?.[round.id]);
+}
+
+function palmares2026() {
+  if (!isCompetitionComplete()) return null;
+  const rows = sortedLeaderboard("cumulative");
+  if (!rows.length) return null;
+  return {
+    year: 2026,
+    greenJacket: rows[0].player.name,
+    woodenSpoon: rows[rows.length - 1].player.name,
+  };
+}
+
+function competitionPalmaresRows() {
+  const current = palmares2026();
+  return current ? [...palmaresSeed, current] : palmaresSeed;
 }
 
 function requireAdminMessage() {
@@ -1278,11 +1298,11 @@ async function closeAugustaMode() {
 }
 
 function renderPalmaresMetric(type) {
-  const latest = palmaresSeed.find((item) => item.year === 2025) || palmaresSeed[palmaresSeed.length - 1];
+  const rows = competitionPalmaresRows();
+  const latest = rows[rows.length - 1];
   const isGreen = type === "green";
-  const title = isGreen ? "Veste verte 2025" : "Cuillère de bois 2025";
+  const title = isGreen ? `Veste verte ${latest.year}` : `Cuillère de bois ${latest.year}`;
   const name = isGreen ? latest.greenJacket : latest.woodenSpoon;
-  const rows = [...palmaresSeed].reverse();
   return `
     <details class="metric heritage-metric ${isGreen ? "green" : "wood"}">
       <summary>
@@ -1290,7 +1310,7 @@ function renderPalmaresMetric(type) {
         <strong>${name}</strong>
       </summary>
       <div class="heritage-list">
-        ${rows.map((row) => `
+        ${[...rows].reverse().map((row) => `
           <div>
             <span>${row.year}</span>
             <strong>${isGreen ? row.greenJacket : row.woodenSpoon}</strong>
@@ -1758,14 +1778,17 @@ function importScoreCsv(text) {
     });
   });
 
+  const notificationCountBeforeValidation = state.notifications.length;
   importedRoundIds.forEach(validateImportedRound);
   recalculateHandicapsFromValidatedRounds();
+  const createdNotifications = Math.max(0, state.notifications.length - notificationCountBeforeValidation);
+  if (createdNotifications) state.seenNotificationCount = 0;
   state.selectedGroupId = groupsForRound(state.selectedRoundId)[0]?.id || "";
   state.activeMobileHole = 1;
   state.activeScoreCell = null;
   saveState();
   render();
-  alert(`${importedScores} scores importés. Tour validé si les 12 cartes sont complètes, handicaps recalculés.`);
+  alert(`${importedScores} scores importés. ${createdNotifications} alerte(s) shot générée(s). Tour validé si les 12 cartes sont complètes, handicaps recalculés.`);
 }
 
 function renderHoleInput(roundId, player, course, hole, handicapValue) {
@@ -2376,6 +2399,7 @@ function resetScores() {
   state.notifications = [];
   state.players = normalizePlayers(playersSeed);
   state.validatedRounds = {};
+  state.seenNotificationCount = 0;
   saveState();
   render();
 }
