@@ -409,6 +409,16 @@ function stablefordPoints(par, gross, strokes) {
   return Math.max(0, 2 + par - net);
 }
 
+function roundHandicapDown(value) {
+  return Math.floor(value * 10) / 10;
+}
+
+function handicapAfterStableford(handicap, points) {
+  if (points > 36) return handicap - ((points - 36) * 0.5);
+  if (points < 36) return handicap + ((36 - points) * 0.25);
+  return handicap;
+}
+
 function underParType(par, gross) {
   if (!gross || gross >= par) return null;
   const diff = par - gross;
@@ -594,7 +604,7 @@ function playerRoundStatsFromHandicap(player, roundId, handicap) {
     if (underParType(hole.par, gross)) underPar += 1;
   });
 
-  const handicapAfter = handicap - ((points - 36) * 0.5);
+  const handicapAfter = handicapAfterStableford(handicap, points);
   return {
     points,
     grossTotal,
@@ -602,7 +612,7 @@ function playerRoundStatsFromHandicap(player, roundId, handicap) {
     relative,
     underPar,
     handicapValue,
-    handicapAfter: holesPlayed === course.holes.length ? Math.max(0, Number(handicapAfter.toFixed(1))) : null,
+    handicapAfter: holesPlayed === course.holes.length ? Math.max(0, roundHandicapDown(handicapAfter)) : null,
     tee: teeForPlayer(playerForRound, course),
   };
 }
