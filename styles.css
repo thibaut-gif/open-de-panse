@@ -298,6 +298,69 @@ button {
   font-size: 13px;
 }
 
+.heritage-metric {
+  cursor: pointer;
+}
+
+.heritage-metric summary {
+  list-style: none;
+}
+
+.heritage-metric summary::-webkit-details-marker {
+  display: none;
+}
+
+.heritage-metric summary span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.heritage-metric summary strong {
+  margin-top: 4px;
+}
+
+.heritage-metric.green {
+  border-color: #add4be;
+  background: var(--green-soft);
+}
+
+.heritage-metric.wood {
+  border-color: #e2c385;
+  background: var(--gold-soft);
+}
+
+.heritage-list {
+  display: grid;
+  gap: 4px;
+  max-height: 210px;
+  margin-top: 10px;
+  overflow: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(97, 112, 107, 0.25);
+}
+
+.heritage-list div {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.heritage-list span {
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.heritage-list strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tabs {
   position: fixed;
   left: 0;

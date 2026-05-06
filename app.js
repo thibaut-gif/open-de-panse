@@ -123,6 +123,26 @@ const roundsSeed = [
   { id: "r4", number: 4, date: "Vendredi 5 juin 2026", time: "", courseId: "le-robinie", status: "à venir" },
 ];
 
+const palmaresSeed = [
+  { year: 2009, greenJacket: "Lucho", woodenSpoon: "Gregzm" },
+  { year: 2010, greenJacket: "Goulu", woodenSpoon: "Manioulz" },
+  { year: 2011, greenJacket: "Gregzm", woodenSpoon: "Mitch" },
+  { year: 2012, greenJacket: "Lucho", woodenSpoon: "Manioulz" },
+  { year: 2013, greenJacket: "Nanouz", woodenSpoon: "Benouz" },
+  { year: 2014, greenJacket: "Thibz", woodenSpoon: "Manioulz" },
+  { year: 2015, greenJacket: "Nanouz", woodenSpoon: "Manioulz" },
+  { year: 2016, greenJacket: "Gégé", woodenSpoon: "Mitch" },
+  { year: 2017, greenJacket: "Goulu", woodenSpoon: "Benouz" },
+  { year: 2018, greenJacket: "Juju", woodenSpoon: "La Roquette" },
+  { year: 2019, greenJacket: "Nonoz", woodenSpoon: "Juju" },
+  { year: 2020, greenJacket: "La Roquette", woodenSpoon: "Nonoz" },
+  { year: 2021, greenJacket: "Nonoz", woodenSpoon: "Pierrot" },
+  { year: 2022, greenJacket: "Pierrot", woodenSpoon: "Goulu" },
+  { year: 2023, greenJacket: "Thib", woodenSpoon: "Manioulz" },
+  { year: 2024, greenJacket: "Thib", woodenSpoon: "Greg'z" },
+  { year: 2025, greenJacket: "Ben", woodenSpoon: "Thib" },
+];
+
 let state = loadState();
 let isAuthenticated = localStorage.getItem(AUTH_KEY) === "ok";
 let currentRole = localStorage.getItem(ROLE_KEY) || "participant";
@@ -803,8 +823,6 @@ function renderTabs() {
 
 function renderHome() {
   const cumulative = sortedLeaderboard("cumulative");
-  const leader = cumulative[0];
-  const completedScores = Object.keys(state.scores).length;
   const latestAlert = state.notifications[0];
   return `
     ${latestAlert ? `
@@ -824,8 +842,8 @@ function renderHome() {
       <div class="metric-row">
         <div class="metric"><strong>${state.players.length}</strong><span>joueurs</span></div>
         <div class="metric"><strong>${state.rounds.length}</strong><span>tours</span></div>
-        <div class="metric"><strong>${completedScores}</strong><span>scores saisis</span></div>
-        <div class="metric"><strong>${leader ? leader.stats.points : 0}</strong><span>points leader</span></div>
+        ${renderPalmaresMetric("green")}
+        ${renderPalmaresMetric("wooden")}
       </div>
     </div>
     <div class="grid two">
@@ -870,6 +888,30 @@ function renderHome() {
         `).join("") : `<div class="empty">Les premiers birdies apparaîtront ici.</div>`}
       </div>
     </div>
+  `;
+}
+
+function renderPalmaresMetric(type) {
+  const latest = palmaresSeed.find((item) => item.year === 2025) || palmaresSeed[palmaresSeed.length - 1];
+  const isGreen = type === "green";
+  const title = isGreen ? "Veste verte 2025" : "Cuillère de bois 2025";
+  const name = isGreen ? latest.greenJacket : latest.woodenSpoon;
+  const rows = [...palmaresSeed].reverse();
+  return `
+    <details class="metric heritage-metric ${isGreen ? "green" : "wood"}">
+      <summary>
+        <span>${title}</span>
+        <strong>${name}</strong>
+      </summary>
+      <div class="heritage-list">
+        ${rows.map((row) => `
+          <div>
+            <span>${row.year}</span>
+            <strong>${isGreen ? row.greenJacket : row.woodenSpoon}</strong>
+          </div>
+        `).join("")}
+      </div>
+    </details>
   `;
 }
 
