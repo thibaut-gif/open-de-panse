@@ -872,6 +872,49 @@ button {
   max-width: 220px;
 }
 
+.player-palmares {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.palmares-item {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 6px 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8faf8;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.palmares-symbol {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 19px;
+  font-weight: 950;
+}
+
+.palmares-symbol.star {
+  color: #0b6b3a;
+  background: #e6f4ed;
+}
+
+.palmares-symbol.spoon {
+  color: #72510f;
+  background: #f8edcf;
+}
+
 .handicap-history {
   margin-top: 12px;
   padding-top: 12px;

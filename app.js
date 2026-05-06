@@ -870,6 +870,59 @@ function displayPlayerName(player, rank) {
   return `Joueur ${rank}`;
 }
 
+function canSeeAllPlayerProfiles() {
+  return isAdmin() || state.anonymizeParticipantLeaderboards === false;
+}
+
+function visibleProfilePlayers() {
+  if (canSeeAllPlayerProfiles()) return state.players;
+  const player = currentPlayer();
+  return player ? [player] : [];
+}
+
+function normalizePalmaresName(name) {
+  return String(name || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function palmaresPlayerId(name) {
+  const aliases = {
+    juju: "p1",
+    thib: "p2",
+    thibz: "p2",
+    tib: "p2",
+    goulu: "p3",
+    gulu: "p3",
+    gege: "p4",
+    gg: "p4",
+    nanou: "p5",
+    nanouz: "p5",
+    pierrot: "p6",
+    lucho: "p7",
+    lutcho: "p7",
+    nonoz: "p8",
+    ben: "p9",
+    benouz: "p9",
+    manu: "p10",
+    manioulz: "p10",
+    laroquette: "p11",
+    gregz: "p12",
+    gregzm: "p12",
+  };
+  return aliases[normalizePalmaresName(name)] || "";
+}
+
+function playerPalmares(player) {
+  return palmaresSeed.reduce((acc, row) => {
+    if (palmaresPlayerId(row.greenJacket) === player.id) acc.wins.push(row.year);
+    if (palmaresPlayerId(row.woodenSpoon) === player.id) acc.spoons.push(row.year);
+    return acc;
+  }, { wins: [], spoons: [] });
+}
+
 function requireAdminMessage() {
   alert("Cette action est réservée à l'administrateur.");
 }
@@ -1697,18 +1750,20 @@ function renderFloatingKeypad() {
 function renderPlayers() {
   const round = selectedRound();
   const course = courseForRound(round.id);
+  const players = visibleProfilePlayers();
+  const restricted = !canSeeAllPlayerProfiles();
   return `
     <div class="panel">
       <div class="panel-header">
         <div>
           <h3 class="panel-title">Joueurs</h3>
-          <p class="panel-subtitle">Handicap, départ recommandé et coups rendus sur le tour sélectionné</p>
+          <p class="panel-subtitle">${restricted ? "Profil joueur personnel tant que les classements sont anonymes" : "Handicap, départ recommandé et coups rendus sur le tour sélectionné"}</p>
         </div>
       </div>
       <div class="panel-body">
         ${isAdmin() ? renderPlayerAdminTools() : ""}
         <div class="cards">
-        ${state.players.map((player) => {
+        ${players.length ? players.map((player) => {
           const stats = playerRoundStats(player, round.id);
           const initialHandicap = player.initialHandicap ?? player.handicap;
           return `
@@ -1721,6 +1776,7 @@ function renderPlayers() {
                 </div>
                 <span class="tag green">${stats.handicapValue} CR</span>
               </div>
+              ${renderPlayerPalmares(player)}
               ${isAdmin() ? `
                 <div class="player-edit-row">
                   <div class="field">
@@ -1733,9 +1789,32 @@ function renderPlayers() {
               ${renderPlayerScorecards(player)}
             </div>
           `;
-        }).join("")}
+        }).join("") : `<div class="empty">Connecte-toi avec ton code joueur pour voir ton profil personnel.</div>`}
         </div>
       </div>
+    </div>
+  `;
+}
+
+function renderPlayerPalmares(player) {
+  const palmares = playerPalmares(player);
+  const wins = palmares.wins.map((year) => `
+    <span class="palmares-item">
+      <span class="palmares-symbol star">★</span>
+      <span>${year}</span>
+    </span>
+  `).join("");
+  const spoons = palmares.spoons.map((year) => `
+    <span class="palmares-item">
+      <span class="palmares-symbol spoon">🥄</span>
+      <span>${year}</span>
+    </span>
+  `).join("");
+  if (!wins && !spoons) return "";
+  return `
+    <div class="player-palmares">
+      ${wins}
+      ${spoons}
     </div>
   `;
 }
