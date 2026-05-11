@@ -82,9 +82,9 @@ const coursesSeed = [
   {
     id: "castelconturbia",
     club: "Golf Club Castelconturbia",
-    name: "Yellow + Blue Championship",
+    name: "Yellow puis Blue Championship",
     location: "Agrate Conturbia, Piemonte",
-    note: "Composition 18 trous : Yellow Course - Pini puis Blue Course - Castagni. Format championship par 72.",
+    note: "Composition 18 trous : 1-9 Yellow Course - Pini puis 10-18 Blue Course - Castagni. Format championship par 72.",
     tees: [
       { id: "white", label: "Blanc", sourceLabel: "White", rating: 73.2, slope: 145, distance: 6230, par: 72 },
       { id: "yellow", label: "Jaune", sourceLabel: "Yellow", rating: 71.5, slope: 142, distance: 5885, par: 72 },
@@ -134,8 +134,8 @@ const coursesSeed = [
 
 const roundsSeed = [
   { id: "r1", number: 1, date: "Mercredi 3 juin 2026", time: "", courseId: "castelconturbia", status: "à venir" },
-  { id: "r2", number: 2, date: "Jeudi 4 juin 2026", time: "matin", courseId: "bogogno-bonora", status: "à venir" },
-  { id: "r3", number: 3, date: "Jeudi 4 juin 2026", time: "après-midi", courseId: "bogogno-del-conte", status: "à venir" },
+  { id: "r2", number: 2, date: "Jeudi 4 juin 2026", time: "matin", courseId: "bogogno-del-conte", status: "à venir" },
+  { id: "r3", number: 3, date: "Jeudi 4 juin 2026", time: "après-midi", courseId: "bogogno-bonora", status: "à venir" },
   { id: "r4", number: 4, date: "Vendredi 5 juin 2026", time: "", courseId: "le-robinie", status: "à venir" },
 ];
 
@@ -238,6 +238,8 @@ function loadState() {
     if (!saved) return createInitialState();
     const parsed = JSON.parse(saved);
     const nextState = { ...createInitialState(), ...parsed };
+    nextState.rounds = roundsSeed;
+    nextState.courses = coursesSeed;
     nextState.players = normalizePlayers(nextState.players);
     return nextState;
   } catch {
@@ -289,6 +291,8 @@ function applyRemoteState(data) {
     showPositionRace: state.showPositionRace,
     seenNotificationCount: state.seenNotificationCount,
   };
+  state.rounds = roundsSeed;
+  state.courses = coursesSeed;
   state.players = normalizePlayers(state.players);
   remoteReady = true;
   saveLocalOnly();

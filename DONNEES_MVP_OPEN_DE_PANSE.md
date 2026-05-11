@@ -6,21 +6,21 @@ La prochaine edition de l'Open de Panse se joue sur 4 tours et 4 parcours, du me
 
 | Tour | Date | Club | Parcours | Notes |
 | --- | --- | --- | --- | --- |
-| 1 | Mercredi 3 juin 2026 | Golf Club Castelconturbia | Yellow Course - Pini + Blue Course - Castagni | Format championship, par 72, environ 5885 m des jaunes. |
-| 2 | Jeudi 4 juin 2026 | Circolo Golf Bogogno | Bonora | Premier parcours de la journee. |
-| 3 | Jeudi 4 juin 2026 | Circolo Golf Bogogno | Del Conte | Deuxieme parcours de la journee. |
+| 1 | Mercredi 3 juin 2026 | Golf Club Castelconturbia | Yellow Course - Pini puis Blue Course - Castagni | Format championship, par 72, environ 5885 m des jaunes. |
+| 2 | Jeudi 4 juin 2026 | Circolo Golf Bogogno | Del Conte | Premier parcours de la journee. |
+| 3 | Jeudi 4 juin 2026 | Circolo Golf Bogogno | Bonora | Deuxieme parcours de la journee. |
 | 4 | Vendredi 5 juin 2026 | Le Robinie Golf Club | Le Robinie | Dernier tour. |
 
 ## Donnees parcours disponibles pour le prototype
 
-### Tour 1 - Golf Club Castelconturbia, Yellow Course - Pini + Blue Course - Castagni
+### Tour 1 - Golf Club Castelconturbia, Yellow Course - Pini puis Blue Course - Castagni
 
 Informations a utiliser dans le MVP :
 
 - Club : Golf Club Castelconturbia.
 - Localisation : Agrate Conturbia, Piemonte, Italie.
 - Date : mercredi 3 juin 2026.
-- Parcours : Yellow Course - Pini + Blue Course - Castagni.
+- Parcours : Yellow Course - Pini puis Blue Course - Castagni.
 - Format : 18 trous.
 - Par : 72.
 - Distance depart jaune : 5885 m.
@@ -35,21 +35,7 @@ Ordre de jeu :
 - Trous 1 a 9 : Yellow Course - Pini.
 - Trous 10 a 18 : Blue Course - Castagni.
 
-### Tour 2 - Circolo Golf Bogogno, Bonora
-
-Informations a utiliser dans le MVP :
-
-- Club : Circolo Golf Bogogno.
-- Parcours : Bonora.
-- Localisation : Bogogno, Piemonte, Italie.
-- Date : jeudi 4 juin 2026.
-- Ordre : premier parcours de la journee.
-- Par : 72.
-- Departs masculins principaux identifies :
-  - Blanc / Blanco : course rating 74,4, slope 140, distance 6284 m.
-  - Jaune / Giallo : course rating 72,5, slope 136, distance 5880 m.
-
-### Tour 3 - Circolo Golf Bogogno, Del Conte
+### Tour 2 - Circolo Golf Bogogno, Del Conte
 
 Informations a utiliser dans le MVP :
 
@@ -57,11 +43,25 @@ Informations a utiliser dans le MVP :
 - Parcours : Del Conte.
 - Localisation : Bogogno, Piemonte, Italie.
 - Date : jeudi 4 juin 2026.
-- Ordre : deuxieme parcours de la journee.
+- Ordre : premier parcours de la journee.
 - Par : 72.
 - Departs masculins principaux identifies :
   - Blanc / Blanco : course rating 73,1, slope 131, distance 6206 m.
   - Jaune / Giallo : course rating 71,0, slope 127, distance 5755 m.
+
+### Tour 3 - Circolo Golf Bogogno, Bonora
+
+Informations a utiliser dans le MVP :
+
+- Club : Circolo Golf Bogogno.
+- Parcours : Bonora.
+- Localisation : Bogogno, Piemonte, Italie.
+- Date : jeudi 4 juin 2026.
+- Ordre : deuxieme parcours de la journee.
+- Par : 72.
+- Departs masculins principaux identifies :
+  - Blanc / Blanco : course rating 74,4, slope 140, distance 6284 m.
+  - Jaune / Giallo : course rating 72,5, slope 136, distance 5880 m.
 
 ### Tour 4 - Le Robinie Golf Club
 

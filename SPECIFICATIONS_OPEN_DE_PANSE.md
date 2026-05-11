@@ -225,9 +225,9 @@ Le nouveau handicap devient le handicap de reference pour la partie suivante.
 
 Les parcours connus pour le MVP sont :
 
-- Tour 1, mercredi 3 juin 2026 : Golf Club Castelconturbia, Yellow Course - Pini + Blue Course - Castagni, format championship par 72.
-- Tour 2, jeudi 4 juin 2026 matin : Circolo Golf Bogogno, parcours Bonora.
-- Tour 3, jeudi 4 juin 2026 apres-midi : Circolo Golf Bogogno, parcours Del Conte.
+- Tour 1, mercredi 3 juin 2026 : Golf Club Castelconturbia, Yellow Course - Pini puis Blue Course - Castagni, format championship par 72.
+- Tour 2, jeudi 4 juin 2026 matin : Circolo Golf Bogogno, parcours Del Conte.
+- Tour 3, jeudi 4 juin 2026 apres-midi : Circolo Golf Bogogno, parcours Bonora.
 - Tour 4, vendredi 5 juin 2026 : Le Robinie Golf Club, parcours Le Robinie.
 
 Ces parcours doivent etre precharges dans le prototype pour permettre de travailler avec des donnees proches de la competition reelle.
