@@ -170,6 +170,7 @@ let remotePollTimer = null;
 let remoteLastSeenAt = 0;
 const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY);
 const clientId = getClientId();
+let voiceRecognition = null;
 
 if (new URLSearchParams(window.location.search).has("reset")) {
   localStorage.removeItem(AUTH_KEY);
@@ -214,6 +215,7 @@ function createInitialState() {
     homePreviewRoundId: "",
     activeScoreCell: null,
     activeMobileHole: 1,
+    voiceEntry: { holeNumber: 1, playerIndex: 0, transcript: "", parsed: null, status: "" },
     seenNotificationCount: 0,
     showPositionRace: false,
     anonymizeParticipantLeaderboards: true,
@@ -222,6 +224,7 @@ function createInitialState() {
     players: normalizePlayers(playersSeed),
     groups: createInitialGroups(),
     scores: {},
+    putts: {},
     validatedHoles: {},
     notifications: [],
     validatedRounds: {},
@@ -265,6 +268,7 @@ function publicState() {
     players: state.players,
     groups: state.groups,
     scores: state.scores,
+    putts: state.putts,
     validatedHoles: state.validatedHoles,
     notifications: state.notifications,
     validatedRounds: state.validatedRounds,
@@ -288,6 +292,7 @@ function applyRemoteState(data) {
     homePreviewRoundId: state.homePreviewRoundId,
     activeScoreCell: state.activeScoreCell,
     activeMobileHole: state.activeMobileHole,
+    voiceEntry: state.voiceEntry,
     showPositionRace: state.showPositionRace,
     seenNotificationCount: state.seenNotificationCount,
   };
@@ -400,6 +405,10 @@ function roundScoreKey(roundId, playerId, holeNumber) {
   return `${roundId}:${playerId}:${holeNumber}`;
 }
 
+function puttKey(roundId, playerId, holeNumber) {
+  return `${roundId}:${playerId}:${holeNumber}`;
+}
+
 function roundHalfUp(value) {
   return Math.floor(value + 0.5);
 }
@@ -474,6 +483,21 @@ function getGross(roundId, playerId, holeNumber) {
   return state.scores[roundScoreKey(roundId, playerId, holeNumber)] || "";
 }
 
+function getPutts(roundId, playerId, holeNumber) {
+  return state.putts?.[puttKey(roundId, playerId, holeNumber)] || "";
+}
+
+function setPutts(roundId, playerId, holeNumber, value) {
+  if (!state.putts) state.putts = {};
+  const key = puttKey(roundId, playerId, holeNumber);
+  const nextValue = Number(value);
+  if (!value || Number.isNaN(nextValue) || nextValue < 0) {
+    delete state.putts[key];
+  } else {
+    state.putts[key] = nextValue;
+  }
+}
+
 function holeValidationKey(roundId, groupId, holeNumber) {
   return `${roundId}:${groupId || "all"}:${holeNumber}`;
 }
@@ -500,15 +524,15 @@ function setGross(roundId, playerId, holeNumber, value, options = {}) {
   }
 }
 
-function setActiveScoreCell(roundId, playerId, holeNumber) {
-  state.activeScoreCell = { roundId, playerId, holeNumber };
+function setActiveScoreCell(roundId, playerId, holeNumber, kind = "score") {
+  state.activeScoreCell = { roundId, playerId, holeNumber, kind };
   saveLocalOnly();
   renderPreservingPosition();
 }
 
-function activeCellMatches(roundId, playerId, holeNumber) {
+function activeCellMatches(roundId, playerId, holeNumber, kind = "score") {
   const active = state.activeScoreCell;
-  return active?.roundId === roundId && active?.playerId === playerId && active?.holeNumber === holeNumber;
+  return active?.roundId === roundId && active?.playerId === playerId && active?.holeNumber === holeNumber && (active.kind || "score") === kind;
 }
 
 function activeGroupPlayers() {
@@ -523,7 +547,7 @@ function startGroupScoreEntry(roundId, groupId) {
   state.selectedGroupId = groupId;
   state.selectedPlayerId = markerId || state.selectedPlayerId;
   state.activeMobileHole = 1;
-  state.activeScoreCell = firstPlayerId ? { roundId, playerId: firstPlayerId, holeNumber: 1 } : null;
+  state.activeScoreCell = firstPlayerId ? { roundId, playerId: firstPlayerId, holeNumber: 1, kind: "score" } : null;
   state.activeView = "score";
 }
 
@@ -533,11 +557,24 @@ function advanceActiveScoreCell() {
   const players = activeGroupPlayers();
   const currentIndex = players.findIndex((player) => player.id === active.playerId);
   const course = courseForRound(active.roundId);
+  const kind = active.kind || "score";
   if (currentIndex >= 0 && currentIndex < players.length - 1) {
     state.activeScoreCell = {
       roundId: active.roundId,
       playerId: players[currentIndex + 1].id,
       holeNumber: active.holeNumber,
+      kind,
+    };
+    saveLocalOnly();
+    renderPreservingPosition();
+    return;
+  }
+  if (kind === "score" && players[0]) {
+    state.activeScoreCell = {
+      roundId: active.roundId,
+      playerId: players[0].id,
+      holeNumber: active.holeNumber,
+      kind: "putt",
     };
     saveLocalOnly();
     renderPreservingPosition();
@@ -555,6 +592,7 @@ function advanceActiveScoreCell() {
     roundId: active.roundId,
     playerId: players[0].id,
     holeNumber: nextHole.number,
+    kind: "score",
   } : null;
   saveLocalOnly();
   renderPreservingPosition();
@@ -563,14 +601,26 @@ function advanceActiveScoreCell() {
 function keypadScore(value) {
   const active = state.activeScoreCell;
   if (!active) return;
-  setGross(active.roundId, active.playerId, active.holeNumber, value, { localOnly: true });
+  if ((active.kind || "score") === "putt") {
+    setPutts(active.roundId, active.playerId, active.holeNumber, value);
+    saveLocalOnly();
+    scheduleRemoteSave();
+  } else {
+    setGross(active.roundId, active.playerId, active.holeNumber, value, { localOnly: true });
+  }
   advanceActiveScoreCell();
 }
 
 function clearActiveScore() {
   const active = state.activeScoreCell;
   if (!active) return;
-  setGross(active.roundId, active.playerId, active.holeNumber, "", { localOnly: true });
+  if ((active.kind || "score") === "putt") {
+    setPutts(active.roundId, active.playerId, active.holeNumber, "");
+    saveLocalOnly();
+    scheduleRemoteSave();
+  } else {
+    setGross(active.roundId, active.playerId, active.holeNumber, "", { localOnly: true });
+  }
   renderPreservingPosition();
 }
 
@@ -689,11 +739,22 @@ function grossSouterrainesStats(player) {
     doubles: 0,
     triples: 0,
     quadruples: 0,
+    puttsTotal: 0,
+    puttHoles: 0,
+    onePutts: 0,
+    threePutts: 0,
   };
   state.rounds.forEach((round) => {
     const course = courseForRound(round.id);
     course.holes.forEach((hole) => {
       const gross = getGross(round.id, player.id, hole.number);
+      const putts = Number(getPutts(round.id, player.id, hole.number));
+      if (putts > 0) {
+        stats.puttsTotal += putts;
+        stats.puttHoles += 1;
+        if (putts === 1) stats.onePutts += 1;
+        if (putts >= 3) stats.threePutts += 1;
+      }
       if (!gross) return;
       const diff = gross - hole.par;
       stats.grossTotal += gross;
@@ -707,6 +768,7 @@ function grossSouterrainesStats(player) {
       if (diff === 4) stats.quadruples += 1;
     });
   });
+  stats.puttsAverage = stats.puttHoles ? stats.puttsTotal / stats.puttHoles : null;
   return stats;
 }
 
@@ -1506,6 +1568,36 @@ function renderUnderground() {
     </div>
     <div class="underground-grid">
       ${topBlocks.map(([key, label]) => renderUndergroundTop(key, label)).join("")}
+      ${renderPuttingUnderground()}
+    </div>
+  `;
+}
+
+function renderPuttingUnderground() {
+  const rows = state.players
+    .map((player) => ({ player, stats: grossSouterrainesStats(player) }))
+    .filter((row) => row.stats.puttHoles > 0)
+    .sort((a, b) => a.stats.puttsAverage - b.stats.puttsAverage || b.stats.onePutts - a.stats.onePutts)
+    .slice(0, 3);
+
+  return `
+    <div class="panel underground-card">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">Putting</h3>
+          <p class="panel-subtitle">Top 3 moyenne de putts</p>
+        </div>
+      </div>
+      <div class="panel-body cards">
+        ${rows.length ? rows.map((row, index) => `
+          <div class="underground-rank">
+            <span class="rank">#${index + 1}</span>
+            <strong>${displayPlayerName(row.player, index + 1)}</strong>
+            <span class="score-big">${row.stats.puttsAverage.toFixed(1)}</span>
+            <span class="small">${row.stats.puttsTotal} putts · ${row.stats.threePutts} fois 3+</span>
+          </div>
+        `).join("") : `<div class="empty">Les stats putting apparaîtront dès que les putts seront saisis.</div>`}
+      </div>
     </div>
   `;
 }
@@ -1681,6 +1773,10 @@ function clearImportedRound(roundId) {
   Object.keys(state.scores).forEach((key) => {
     if (key.startsWith(`${roundId}:`)) delete state.scores[key];
   });
+  if (!state.putts) state.putts = {};
+  Object.keys(state.putts).forEach((key) => {
+    if (key.startsWith(`${roundId}:`)) delete state.putts[key];
+  });
   if (!state.validatedHoles) state.validatedHoles = {};
   Object.keys(state.validatedHoles).forEach((key) => {
     if (key.startsWith(`${roundId}:`)) delete state.validatedHoles[key];
@@ -1836,9 +1932,16 @@ function renderGroupScoreGrid(roundId, course, players) {
             <th>SI</th>
             ${players.map((player) => {
               const stats = playerRoundStats(player, roundId);
-              return `<th><span>${player.name}</span><small>${stats.tee.label} · ${stats.handicapValue} CR</small></th>`;
+              return `<th colspan="2"><span>${player.name}</span><small>${stats.tee.label} · ${stats.handicapValue} CR</small></th>`;
             }).join("")}
             <th>Validation</th>
+          </tr>
+          <tr>
+            <th></th>
+            <th></th>
+            <th></th>
+            ${players.map(() => `<th>Score</th><th>P</th>`).join("")}
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -1849,17 +1952,25 @@ function renderGroupScoreGrid(roundId, course, players) {
               <td>${hole.strokeIndex}</td>
               ${players.map((player) => {
                 const gross = getGross(roundId, player.id, hole.number);
+                const putts = getPutts(roundId, player.id, hole.number);
                 const stats = playerRoundStats(player, roundId);
                 const strokes = strokesOnHole(stats.handicapValue, hole.strokeIndex);
                 const points = stablefordPoints(hole.par, gross, strokes);
                 const type = underParType(hole.par, gross);
-                const active = activeCellMatches(roundId, player.id, hole.number);
+                const activeScore = activeCellMatches(roundId, player.id, hole.number, "score");
+                const activePutt = activeCellMatches(roundId, player.id, hole.number, "putt");
                 return `
-                  <td class="${type ? "under-par-cell" : ""} ${active ? "active-score-cell" : ""}">
-                    <button class="grid-score-button" data-score-cell="${roundId}:${player.id}:${hole.number}" aria-label="${player.name} trou ${hole.number}">
+                  <td class="${type ? "under-par-cell" : ""} ${activeScore ? "active-score-cell" : ""}">
+                    <button class="grid-score-button" data-score-cell="${roundId}:${player.id}:${hole.number}:score" aria-label="${player.name} score trou ${hole.number}">
                       ${gross || ""}
                     </button>
                     <small>${points ?? "-"} pt${points > 1 ? "s" : ""} · ${strokes >= 0 ? "+" : ""}${strokes}</small>
+                  </td>
+                  <td class="${activePutt ? "active-score-cell" : ""}">
+                    <button class="grid-score-button putt-button" data-score-cell="${roundId}:${player.id}:${hole.number}:putt" aria-label="${player.name} putts trou ${hole.number}">
+                      ${putts || ""}
+                    </button>
+                    <small>P</small>
                   </td>
                 `;
               }).join("")}
@@ -1893,22 +2004,32 @@ function renderMobileHoleEntry(roundId, course, players) {
       <div class="mobile-score-list">
         ${players.map((player) => {
           const gross = getGross(roundId, player.id, hole.number);
+          const putts = getPutts(roundId, player.id, hole.number);
           const stats = playerRoundStats(player, roundId);
           const strokes = strokesOnHole(stats.handicapValue, hole.strokeIndex);
           const points = stablefordPoints(hole.par, gross, strokes);
-          const active = activeCellMatches(roundId, player.id, hole.number);
+          const activeScore = activeCellMatches(roundId, player.id, hole.number, "score");
+          const activePutt = activeCellMatches(roundId, player.id, hole.number, "putt");
           return `
-            <button class="mobile-player-score ${active ? "active" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}">
-              <span>
+            <div class="mobile-player-score-row">
+              <button class="mobile-player-name ${activeScore || activePutt ? "active" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:score">
                 <strong>${player.name}</strong>
                 <small>${points ?? "-"} pt${points > 1 ? "s" : ""} · ${strokes >= 0 ? "+" : ""}${strokes} rendu</small>
-              </span>
-              <b>${gross || ""}</b>
-            </button>
+              </button>
+              <button class="mobile-player-value ${activeScore ? "active" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:score">
+                <span>Score</span>
+                <b>${gross || ""}</b>
+              </button>
+              <button class="mobile-player-value ${activePutt ? "active" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:putt">
+                <span>P</span>
+                <b>${putts || ""}</b>
+              </button>
+            </div>
           `;
         }).join("")}
       </div>
       ${renderMobileKeypad()}
+      ${renderVoiceEntryButton()}
       <button class="btn primary mobile-validate" data-validate-hole="${roundId}:${state.selectedGroupId}:${hole.number}" ${complete ? "" : "disabled"}>
         Valider le trou ${hole.number}
       </button>
@@ -1927,11 +2048,25 @@ function renderMobileKeypad() {
   `;
 }
 
+function renderVoiceEntryButton() {
+  const active = state.activeScoreCell;
+  const player = active ? state.players.find((item) => item.id === active.playerId) : null;
+  const kindLabel = (active?.kind || "score") === "putt" ? "putts" : "score";
+  const label = player ? `${kindLabel} de ${player.name}, trou ${active.holeNumber}` : "Choisis une case";
+  return `
+    <button class="voice-button" data-voice-entry>
+      <span>●</span>
+      Dicter ${label}
+    </button>
+    ${state.voiceEntry?.status ? `<div class="voice-status">${state.voiceEntry.status}</div>` : ""}
+  `;
+}
+
 function renderFloatingKeypad() {
   const active = state.activeScoreCell;
   const player = active ? state.players.find((item) => item.id === active.playerId) : null;
   if (!active || !player) return "";
-  const label = `${player.name} · trou ${active.holeNumber}`;
+  const label = `${player.name} · trou ${active.holeNumber} · ${(active.kind || "score") === "putt" ? "putts" : "score"}`;
   return `
     <div class="score-keypad floating-keypad">
       <div class="keypad-status">
@@ -1943,8 +2078,109 @@ function renderFloatingKeypad() {
           <button class="keypad-key" data-keypad-score="${value}">${value}</button>
         `).join("")}
       </div>
+      ${renderVoiceEntryButton()}
     </div>
   `;
+}
+
+function spokenNumbers(text) {
+  const normalized = normalizePalmaresName(text)
+    .replace(/\bun\b/g, "1")
+    .replace(/\bune\b/g, "1")
+    .replace(/\bdeux\b/g, "2")
+    .replace(/\btrois\b/g, "3")
+    .replace(/\bquatre\b/g, "4")
+    .replace(/\bcinq\b/g, "5")
+    .replace(/\bsix\b/g, "6")
+    .replace(/\bsept\b/g, "7")
+    .replace(/\bhuit\b/g, "8")
+    .replace(/\bneuf\b/g, "9")
+    .replace(/\bdix\b/g, "10")
+    .replace(/\bonze\b/g, "11")
+    .replace(/\bdouze\b/g, "12");
+  return [...normalized.matchAll(/\d+/g)].map((match) => Number(match[0])).filter((value) => value > 0);
+}
+
+function advanceToNextScoreCell() {
+  const active = state.activeScoreCell;
+  if (!active) return;
+  const players = activeGroupPlayers();
+  const currentIndex = players.findIndex((player) => player.id === active.playerId);
+  if (currentIndex >= 0 && currentIndex < players.length - 1) {
+    state.activeScoreCell = {
+      roundId: active.roundId,
+      playerId: players[currentIndex + 1].id,
+      holeNumber: active.holeNumber,
+      kind: "score",
+    };
+  } else {
+    state.activeScoreCell = {
+      roundId: active.roundId,
+      playerId: players[0]?.id || active.playerId,
+      holeNumber: active.holeNumber,
+      kind: "putt",
+    };
+  }
+  saveLocalOnly();
+  renderPreservingPosition();
+}
+
+function applyVoiceTranscript(transcript) {
+  const active = state.activeScoreCell;
+  if (!active) return;
+  const numbers = spokenNumbers(transcript);
+  if (!numbers.length) {
+    state.voiceEntry = { ...state.voiceEntry, transcript, status: "Je n'ai pas reconnu de chiffre." };
+    saveLocalOnly();
+    renderPreservingPosition();
+    return;
+  }
+  const kind = active.kind || "score";
+  if (kind === "score") {
+    setGross(active.roundId, active.playerId, active.holeNumber, numbers[0], { localOnly: true });
+    if (numbers[1] !== undefined || /putt|pute|pot|pote/.test(normalizePalmaresName(transcript))) {
+      setPutts(active.roundId, active.playerId, active.holeNumber, numbers[1] ?? "");
+      saveLocalOnly();
+      scheduleRemoteSave();
+      state.voiceEntry = { ...state.voiceEntry, transcript, status: `Score ${numbers[0]}${numbers[1] ? ` et ${numbers[1]} putt(s)` : ""} saisi.` };
+      advanceToNextScoreCell();
+      return;
+    }
+    state.voiceEntry = { ...state.voiceEntry, transcript, status: `Score ${numbers[0]} saisi.` };
+    advanceActiveScoreCell();
+    return;
+  }
+  setPutts(active.roundId, active.playerId, active.holeNumber, numbers[0]);
+  saveLocalOnly();
+  scheduleRemoteSave();
+  state.voiceEntry = { ...state.voiceEntry, transcript, status: `${numbers[0]} putt(s) saisi(s).` };
+  advanceActiveScoreCell();
+}
+
+function startVoiceEntry() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    alert("La dictée vocale n'est pas disponible dans ce navigateur. Sur iPhone, teste plutôt avec Safari.");
+    return;
+  }
+  if (voiceRecognition) voiceRecognition.abort();
+  voiceRecognition = new SpeechRecognition();
+  voiceRecognition.lang = "fr-FR";
+  voiceRecognition.interimResults = false;
+  voiceRecognition.maxAlternatives = 1;
+  state.voiceEntry = { ...state.voiceEntry, status: "J'écoute..." };
+  saveLocalOnly();
+  renderPreservingPosition();
+  voiceRecognition.onresult = (event) => {
+    const transcript = event.results?.[0]?.[0]?.transcript || "";
+    applyVoiceTranscript(transcript);
+  };
+  voiceRecognition.onerror = () => {
+    state.voiceEntry = { ...state.voiceEntry, status: "Je n'ai pas bien entendu. Réessaie." };
+    saveLocalOnly();
+    renderPreservingPosition();
+  };
+  voiceRecognition.start();
 }
 
 function renderPlayers() {
@@ -1977,6 +2213,7 @@ function renderPlayers() {
                 <span class="tag green">${stats.handicapValue} CR</span>
               </div>
               ${renderPlayerPalmares(player)}
+              ${renderPlayerStats(player)}
               ${isAdmin() ? `
                 <div class="player-edit-row">
                   <div class="field">
@@ -1993,6 +2230,30 @@ function renderPlayers() {
         </div>
       </div>
     </div>
+  `;
+}
+
+function renderPlayerStats(player) {
+  const grossStats = grossSouterrainesStats(player);
+  const stableford = cumulativeStats(player);
+  const triplesPlus = grossStats.triples + grossStats.quadruples;
+  const puttLabel = grossStats.puttHoles ? `${grossStats.puttsAverage.toFixed(1)} moy.` : "-";
+  return `
+    <details class="player-stats">
+      <summary>Statistiques</summary>
+      <div class="player-stats-grid">
+        <div><span>Birdies</span><strong>${grossStats.birdies}</strong></div>
+        <div><span>Pars</span><strong>${grossStats.pars}</strong></div>
+        <div><span>Bogeys</span><strong>${grossStats.bogeys}</strong></div>
+        <div><span>Doubles</span><strong>${grossStats.doubles}</strong></div>
+        <div><span>Triples +</span><strong>${triplesPlus}</strong></div>
+        <div><span>Stableford</span><strong>${stableford.points}</strong></div>
+        <div><span>Trous joués</span><strong>${grossStats.holesPlayed}</strong></div>
+        <div><span>Brut</span><strong>${grossStats.grossTotal || "-"}</strong></div>
+        <div><span>Putts</span><strong>${puttLabel}</strong></div>
+        <div><span>3 putts +</span><strong>${grossStats.puttHoles ? grossStats.threePutts : "-"}</strong></div>
+      </div>
+    </details>
   `;
 }
 
@@ -2399,6 +2660,7 @@ function validateRound() {
 function resetScores() {
   if (!confirm("Effacer tous les scores et notifications du prototype ?")) return;
   state.scores = {};
+  state.putts = {};
   state.validatedHoles = {};
   state.notifications = [];
   state.players = normalizePlayers(playersSeed);
@@ -2540,8 +2802,8 @@ function bindEvents() {
 
   document.querySelectorAll("[data-score-cell]").forEach((button) => {
     button.addEventListener("click", () => {
-      const [roundId, playerId, hole] = button.dataset.scoreCell.split(":");
-      setActiveScoreCell(roundId, playerId, Number(hole));
+      const [roundId, playerId, hole, kind] = button.dataset.scoreCell.split(":");
+      setActiveScoreCell(roundId, playerId, Number(hole), kind || "score");
     });
   });
 
@@ -2553,6 +2815,10 @@ function bindEvents() {
     button.addEventListener("click", clearActiveScore);
   });
 
+  document.querySelectorAll("[data-voice-entry]").forEach((button) => {
+    button.addEventListener("click", startVoiceEntry);
+  });
+
   document.querySelectorAll("[data-mobile-hole-prev]").forEach((button) => {
     button.addEventListener("click", () => {
       const course = courseForRound(state.selectedRoundId);
@@ -2561,7 +2827,7 @@ function bindEvents() {
       if (!previous) return;
       state.activeMobileHole = previous.number;
       const firstPlayer = activeGroupPlayers()[0];
-      state.activeScoreCell = firstPlayer ? { roundId: state.selectedRoundId, playerId: firstPlayer.id, holeNumber: previous.number } : null;
+      state.activeScoreCell = firstPlayer ? { roundId: state.selectedRoundId, playerId: firstPlayer.id, holeNumber: previous.number, kind: "score" } : null;
       saveLocalOnly();
       render();
     });
@@ -2575,7 +2841,7 @@ function bindEvents() {
       if (!next) return;
       state.activeMobileHole = next.number;
       const firstPlayer = activeGroupPlayers()[0];
-      state.activeScoreCell = firstPlayer ? { roundId: state.selectedRoundId, playerId: firstPlayer.id, holeNumber: next.number } : null;
+      state.activeScoreCell = firstPlayer ? { roundId: state.selectedRoundId, playerId: firstPlayer.id, holeNumber: next.number, kind: "score" } : null;
       saveLocalOnly();
       render();
     });
@@ -2589,7 +2855,7 @@ function bindEvents() {
       const course = courseForRound(roundId);
       const nextHole = course.holes.find((item) => item.number > Number(hole));
       if (nextHole && players[0]) {
-        state.activeScoreCell = { roundId, playerId: players[0].id, holeNumber: nextHole.number };
+        state.activeScoreCell = { roundId, playerId: players[0].id, holeNumber: nextHole.number, kind: "score" };
         state.activeMobileHole = nextHole.number;
         saveLocalOnly();
         render();
