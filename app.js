@@ -2049,15 +2049,15 @@ function renderMobileKeypad() {
 }
 
 function renderVoiceEntryButton() {
-  const active = state.activeScoreCell;
-  const player = active ? state.players.find((item) => item.id === active.playerId) : null;
-  const kindLabel = (active?.kind || "score") === "putt" ? "putts" : "score";
-  const label = player ? `${kindLabel} de ${player.name}, trou ${active.holeNumber}` : "Choisis une case";
+  const round = selectedRound();
+  const course = courseForRound(round.id);
+  const hole = course.holes.find((item) => item.number === state.activeMobileHole) || course.holes[0];
   return `
-    <button class="voice-button" data-voice-entry>
+    <button class="voice-button" data-voice-entry="${round.id}:${hole.number}">
       <span>●</span>
-      Dicter ${label}
+      Saisie vocale du trou ${hole.number}
     </button>
+    <div class="voice-help">Exemple : Juju 4 avec 2 putts, Ben 5, Greg 3 avec 1 putt.</div>
     ${state.voiceEntry?.status ? `<div class="voice-status">${state.voiceEntry.status}</div>` : ""}
   `;
 }
@@ -2084,7 +2084,7 @@ function renderFloatingKeypad() {
 }
 
 function spokenNumbers(text) {
-  const normalized = normalizePalmaresName(text)
+  const normalized = normalizeVoiceText(text)
     .replace(/\bun\b/g, "1")
     .replace(/\bune\b/g, "1")
     .replace(/\bdeux\b/g, "2")
@@ -2099,6 +2099,72 @@ function spokenNumbers(text) {
     .replace(/\bonze\b/g, "11")
     .replace(/\bdouze\b/g, "12");
   return [...normalized.matchAll(/\d+/g)].map((match) => Number(match[0])).filter((value) => value > 0);
+}
+
+function normalizeVoiceText(text) {
+  return String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function voiceAliasesForPlayer(player) {
+  const aliases = {
+    p1: ["juju"],
+    p2: ["thib", "tib", "thibz", "thibaud", "thibaut"],
+    p3: ["goulu", "gulu"],
+    p4: ["gege", "gg", "gégé"],
+    p5: ["nanou", "nanouz"],
+    p6: ["pierrot"],
+    p7: ["lutcho", "lucho"],
+    p8: ["nonoz"],
+    p9: ["ben", "benouz"],
+    p10: ["manu", "manioulz"],
+    p11: ["la roquette", "laroquette", "roquette"],
+    p12: ["greg", "gregz", "gregzm"],
+  };
+  return [...new Set([player.name, ...(aliases[player.id] || [])].map(normalizeVoiceText).filter(Boolean))];
+}
+
+function findVoicePlayerMentions(transcript, players) {
+  const text = normalizeVoiceText(transcript);
+  const mentions = [];
+  players.forEach((player) => {
+    voiceAliasesForPlayer(player).forEach((alias) => {
+      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = new RegExp(`(^|\\s)${escaped}(?=\\s|$)`, "g");
+      let match = pattern.exec(text);
+      while (match) {
+        mentions.push({
+          player,
+          index: match.index + match[1].length,
+          alias,
+        });
+        match = pattern.exec(text);
+      }
+    });
+  });
+  return mentions
+    .sort((a, b) => a.index - b.index || b.alias.length - a.alias.length)
+    .filter((mention, index, all) => !all.slice(0, index).some((other) => other.player.id === mention.player.id && Math.abs(other.index - mention.index) < 3));
+}
+
+function parseVoiceHoleTranscript(transcript, players) {
+  const text = normalizeVoiceText(transcript);
+  const mentions = findVoicePlayerMentions(transcript, players);
+  return mentions.map((mention, index) => {
+    const next = mentions[index + 1];
+    const chunk = text.slice(mention.index + mention.alias.length, next ? next.index : text.length);
+    const numbers = spokenNumbers(chunk);
+    return {
+      player: mention.player,
+      score: numbers[0] || null,
+      putts: numbers[1] || null,
+    };
+  }).filter((item) => item.score);
 }
 
 function advanceToNextScoreCell() {
@@ -2125,39 +2191,39 @@ function advanceToNextScoreCell() {
   renderPreservingPosition();
 }
 
-function applyVoiceTranscript(transcript) {
-  const active = state.activeScoreCell;
-  if (!active) return;
-  const numbers = spokenNumbers(transcript);
-  if (!numbers.length) {
-    state.voiceEntry = { ...state.voiceEntry, transcript, status: "Je n'ai pas reconnu de chiffre." };
+function applyVoiceTranscript(transcript, roundId, holeNumber) {
+  const players = activeGroupPlayers();
+  const parsed = parseVoiceHoleTranscript(transcript, players);
+  if (!parsed.length) {
+    state.voiceEntry = { ...state.voiceEntry, transcript, status: "Je n'ai pas reconnu de score associé à un joueur de cette partie." };
     saveLocalOnly();
     renderPreservingPosition();
     return;
   }
-  const kind = active.kind || "score";
-  if (kind === "score") {
-    setGross(active.roundId, active.playerId, active.holeNumber, numbers[0], { localOnly: true });
-    if (numbers[1] !== undefined || /putt|pute|pot|pote/.test(normalizePalmaresName(transcript))) {
-      setPutts(active.roundId, active.playerId, active.holeNumber, numbers[1] ?? "");
-      saveLocalOnly();
-      scheduleRemoteSave();
-      state.voiceEntry = { ...state.voiceEntry, transcript, status: `Score ${numbers[0]}${numbers[1] ? ` et ${numbers[1]} putt(s)` : ""} saisi.` };
-      advanceToNextScoreCell();
-      return;
-    }
-    state.voiceEntry = { ...state.voiceEntry, transcript, status: `Score ${numbers[0]} saisi.` };
-    advanceActiveScoreCell();
-    return;
-  }
-  setPutts(active.roundId, active.playerId, active.holeNumber, numbers[0]);
+  parsed.forEach((item) => {
+    setGross(roundId, item.player.id, holeNumber, item.score, { localOnly: true, keepFocus: true });
+    if (item.putts) setPutts(roundId, item.player.id, holeNumber, item.putts);
+  });
+  const missingScore = players.find((player) => !getGross(roundId, player.id, holeNumber));
+  const firstPutt = players.find((player) => !getPutts(roundId, player.id, holeNumber));
+  state.activeScoreCell = missingScore
+    ? { roundId, playerId: missingScore.id, holeNumber, kind: "score" }
+    : firstPutt
+      ? { roundId, playerId: firstPutt.id, holeNumber, kind: "putt" }
+      : { roundId, playerId: players[0]?.id || parsed[0].player.id, holeNumber, kind: "score" };
+  const withPutts = parsed.filter((item) => item.putts).length;
+  state.voiceEntry = {
+    ...state.voiceEntry,
+    transcript,
+    parsed,
+    status: `${parsed.length} score(s) reconnu(s), ${withPutts} putt(s) renseigné(s).`,
+  };
   saveLocalOnly();
   scheduleRemoteSave();
-  state.voiceEntry = { ...state.voiceEntry, transcript, status: `${numbers[0]} putt(s) saisi(s).` };
-  advanceActiveScoreCell();
+  renderPreservingPosition();
 }
 
-function startVoiceEntry() {
+function startVoiceEntry(roundId, holeNumber) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
     alert("La dictée vocale n'est pas disponible dans ce navigateur. Sur iPhone, teste plutôt avec Safari.");
@@ -2168,12 +2234,13 @@ function startVoiceEntry() {
   voiceRecognition.lang = "fr-FR";
   voiceRecognition.interimResults = false;
   voiceRecognition.maxAlternatives = 1;
-  state.voiceEntry = { ...state.voiceEntry, status: "J'écoute..." };
+  voiceRecognition.continuous = false;
+  state.voiceEntry = { ...state.voiceEntry, holeNumber, transcript: "", parsed: null, status: "J'écoute toute la partie..." };
   saveLocalOnly();
   renderPreservingPosition();
   voiceRecognition.onresult = (event) => {
     const transcript = event.results?.[0]?.[0]?.transcript || "";
-    applyVoiceTranscript(transcript);
+    applyVoiceTranscript(transcript, roundId, holeNumber);
   };
   voiceRecognition.onerror = () => {
     state.voiceEntry = { ...state.voiceEntry, status: "Je n'ai pas bien entendu. Réessaie." };
@@ -2816,7 +2883,10 @@ function bindEvents() {
   });
 
   document.querySelectorAll("[data-voice-entry]").forEach((button) => {
-    button.addEventListener("click", startVoiceEntry);
+    button.addEventListener("click", () => {
+      const [roundId, hole] = button.dataset.voiceEntry.split(":");
+      startVoiceEntry(roundId, Number(hole));
+    });
   });
 
   document.querySelectorAll("[data-mobile-hole-prev]").forEach((button) => {
