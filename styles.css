@@ -1341,95 +1341,56 @@ button {
   width: 100%;
 }
 
-.voice-pad {
-  width: 100%;
-  min-height: 46px;
-  margin: 0 0 10px;
-  border: 1px solid #bdd2c6;
-  border-radius: 999px;
-  background: var(--ink);
-  color: white;
-  font-weight: 900;
-  touch-action: none;
-  user-select: none;
+.voice-control {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px;
-  place-items: center;
-  justify-content: center;
-  text-align: center;
+  grid-template-columns: 58px 1fr;
+  gap: 12px;
+  align-items: center;
+  margin: 0 0 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffafa;
 }
 
-.voice-pad span {
-  display: inline-grid;
-  width: 20px;
-  height: 20px;
-  margin-right: 8px;
+.voice-control strong,
+.voice-control small {
+  display: block;
+}
+
+.voice-control small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.voice-record-button {
+  display: grid;
+  width: 54px;
+  height: 54px;
   place-items: center;
+  border: 0;
   border-radius: 999px;
   background: var(--red);
-  color: var(--red);
-  vertical-align: middle;
+  box-shadow: 0 8px 18px rgba(188, 61, 61, 0.26);
+  touch-action: manipulation;
 }
 
-.voice-pad.arming,
-.voice-pad.recording,
-.voice-pad:active {
+.voice-record-button span {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: white;
+}
+
+.voice-record-button:active {
   transform: scale(0.99);
 }
 
-.voice-pad.arming {
-  background: #5f6d66;
-  border-color: #5f6d66;
-}
-
-.voice-pad.recording {
-  background: var(--red);
-  border-color: var(--red);
-}
-
-.mobile-hole-card.arming {
-  outline: 4px solid rgba(95, 109, 102, 0.26);
-  box-shadow: 0 0 0 8px rgba(95, 109, 102, 0.1);
-}
-
-.mobile-hole-card.recording {
-  outline: 4px solid rgba(188, 61, 61, 0.32);
-  box-shadow: 0 0 0 8px rgba(188, 61, 61, 0.12);
-}
-
-.voice-pad.arming span,
-.voice-pad.recording span,
-.voice-pad:active span,
-.mobile-hole-card.recording .voice-pad span {
-  background: white;
-  color: white;
-  box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.18);
-}
-
-.voice-recording-indicator {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin: 0 0 10px;
-  padding: 10px;
-  border-radius: 999px;
-  background: #fff0f0;
-  color: var(--red);
-  font-size: 12px;
-  font-weight: 950;
-}
-
-.voice-recording-indicator.show {
-  display: flex;
-}
-
-.voice-recording-indicator span {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  background: var(--red);
+.voice-record-button.recording {
+  background: #b52121;
+  box-shadow: 0 0 0 8px rgba(188, 61, 61, 0.14), 0 8px 18px rgba(188, 61, 61, 0.26);
   animation: voicePulse 1s ease-in-out infinite;
 }
 
@@ -1463,17 +1424,8 @@ button {
   }
 }
 
-.voice-help {
-  margin: -2px 0 10px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 750;
-  line-height: 1.35;
-  text-align: center;
-}
-
 .voice-status {
-  margin: -2px 0 10px;
+  margin: -4px 0 10px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;

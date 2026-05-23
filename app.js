@@ -172,8 +172,6 @@ const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY)
 const clientId = getClientId();
 let voiceRecognition = null;
 let voicePressActive = false;
-let voiceHoldArmed = false;
-let voiceStartTimer = null;
 let voicePending = null;
 let voiceFinishTimer = null;
 
@@ -1999,7 +1997,7 @@ function renderMobileHoleEntry(roundId, course, players) {
   const hole = course.holes.find((item) => item.number === state.activeMobileHole) || course.holes[0];
   const complete = players.every((player) => getGross(roundId, player.id, hole.number));
   return `
-    <div class="mobile-hole-card" data-voice-surface="${roundId}:${hole.number}">
+    <div class="mobile-hole-card">
       <div class="mobile-hole-header">
         <button class="btn" data-mobile-hole-prev>Précédent</button>
         <div>
@@ -2008,6 +2006,7 @@ function renderMobileHoleEntry(roundId, course, players) {
         </div>
         <button class="btn" data-mobile-hole-next>Suivant</button>
       </div>
+      ${renderVoiceEntryButton()}
       <div class="mobile-score-list">
         ${players.map((player) => {
           const gross = getGross(roundId, player.id, hole.number);
@@ -2038,7 +2037,6 @@ function renderMobileHoleEntry(roundId, course, players) {
         }).join("")}
       </div>
       ${renderMobileKeypad()}
-      ${renderVoiceEntryButton()}
       <button class="btn primary mobile-validate" data-validate-hole="${roundId}:${state.selectedGroupId}:${hole.number}" ${complete ? "" : "disabled"}>
         Valider le trou ${hole.number}
       </button>
@@ -2070,15 +2068,15 @@ function renderVoiceEntryButton() {
   const course = courseForRound(round.id);
   const hole = course.holes.find((item) => item.number === state.activeMobileHole) || course.holes[0];
   return `
-    <div class="voice-pad" data-voice-entry="${round.id}:${hole.number}" role="button" tabindex="0">
-      <span>●</span>
-      Maintenir pour parler
+    <div class="voice-control">
+      <button class="voice-record-button ${state.voiceEntry?.recording ? "recording" : ""}" data-voice-toggle="${round.id}:${hole.number}" aria-label="Enregistrer les scores du trou">
+        <span></span>
+      </button>
+      <div>
+        <strong>${state.voiceEntry?.recording ? "Enregistrement..." : "Dictée du trou"}</strong>
+        <small>${state.voiceEntry?.recording ? "Appuie de nouveau pour arrêter" : "Appuie, dicte la partie, puis rappuie"}</small>
+      </div>
     </div>
-    <div class="voice-recording-indicator ${state.voiceEntry?.recording ? "show" : ""}">
-      <span></span>
-      Enregistrement en cours
-    </div>
-    <div class="voice-help">Reste appuyé ici, ou sur un espace vide de la fiche, puis relâche. Exemple : Juju 4 avec 2 putts, Ben 5, Greg 3 avec 1 putt.</div>
     ${state.voiceEntry?.status ? `<div class="voice-status">${state.voiceEntry.status}</div>` : ""}
   `;
 }
@@ -2268,7 +2266,7 @@ function finishVoiceHold() {
   const { roundId, holeNumber } = voicePending;
   voicePending = null;
   if (!transcript) {
-    state.voiceEntry = { ...state.voiceEntry, recording: false, status: "Je n'ai rien entendu. Reste appuyé pendant toute la phrase." };
+    state.voiceEntry = { ...state.voiceEntry, recording: false, status: "Je n'ai rien entendu. Appuie, dicte la partie, puis rappuie pour arrêter." };
     saveLocalOnly();
     renderPreservingPosition();
     return;
@@ -2276,9 +2274,7 @@ function finishVoiceHold() {
   applyVoiceTranscript(transcript, roundId, holeNumber);
 }
 
-function stopVoiceHold() {
-  clearTimeout(voiceStartTimer);
-  voiceHoldArmed = false;
+function stopVoiceRecording() {
   if (!voicePressActive && !voicePending) {
     state.voiceEntry = { ...state.voiceEntry, recording: false, status: "" };
     saveLocalOnly();
@@ -2299,7 +2295,7 @@ function stopVoiceHold() {
   voiceFinishTimer = setTimeout(finishVoiceHold, 1200);
 }
 
-function startVoiceHold(roundId, holeNumber) {
+function startVoiceRecording(roundId, holeNumber) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
     alert("La dictée vocale n'est pas disponible dans ce navigateur. Sur iPhone, teste plutôt avec Safari.");
@@ -2307,7 +2303,6 @@ function startVoiceHold(roundId, holeNumber) {
   }
   if (voiceRecognition) voiceRecognition.abort();
   clearTimeout(voiceFinishTimer);
-  voiceHoldArmed = false;
   voicePressActive = true;
   voicePending = { roundId, holeNumber, transcript: "", processed: false };
   voiceRecognition = new SpeechRecognition();
@@ -2329,7 +2324,7 @@ function startVoiceHold(roundId, holeNumber) {
     voicePressActive = false;
     if (voicePending) voicePending.processed = true;
     voicePending = null;
-    state.voiceEntry = { ...state.voiceEntry, recording: false, status: "Je n'ai pas bien entendu. Réessaie en restant appuyé." };
+    state.voiceEntry = { ...state.voiceEntry, recording: false, status: "Je n'ai pas bien entendu. Réessaie avec le bouton rouge." };
     saveLocalOnly();
     renderPreservingPosition();
   };
@@ -2337,6 +2332,14 @@ function startVoiceHold(roundId, holeNumber) {
     if (!voicePressActive) finishVoiceHold();
   };
   voiceRecognition.start();
+}
+
+function toggleVoiceRecording(roundId, holeNumber) {
+  if (state.voiceEntry?.recording || voicePressActive) {
+    stopVoiceRecording();
+  } else {
+    startVoiceRecording(roundId, holeNumber);
+  }
 }
 
 function renderPlayers() {
@@ -2971,48 +2974,12 @@ function bindEvents() {
     button.addEventListener("click", clearActiveScore);
   });
 
-  function bindVoiceHold(element) {
-    const start = (event) => {
-      const isVoicePad = Boolean(event.currentTarget.dataset.voiceEntry);
-      if (!isVoicePad && event.target.closest("[data-voice-entry]")) return;
-      if (!isVoicePad && event.target.closest("button, input, select, label, a")) return;
-      event.preventDefault();
-      const source = event.currentTarget;
-      const [roundId, hole] = (source.dataset.voiceEntry || source.dataset.voiceSurface).split(":");
-      if (source.setPointerCapture) source.setPointerCapture(event.pointerId);
-      voiceHoldArmed = true;
-      source.classList.add("arming");
-      state.voiceEntry = { ...state.voiceEntry, status: "Maintiens encore pour activer le micro..." };
-      saveLocalOnly();
-      voiceStartTimer = setTimeout(() => {
-        if (!voiceHoldArmed) return;
-        source.classList.remove("arming");
-        source.classList.add("recording");
-        startVoiceHold(roundId, Number(hole));
-      }, 1300);
-    };
-    const stop = (event) => {
-      event.preventDefault();
-      clearTimeout(voiceStartTimer);
-      voiceHoldArmed = false;
-      event.currentTarget.classList.remove("arming");
-      event.currentTarget.classList.remove("recording");
-      stopVoiceHold();
-    };
-    element.addEventListener("pointerdown", start);
-    element.addEventListener("pointerup", stop);
-    element.addEventListener("pointercancel", stop);
-    element.addEventListener("lostpointercapture", () => {
-      clearTimeout(voiceStartTimer);
-      voiceHoldArmed = false;
-      element.classList.remove("arming");
-      element.classList.remove("recording");
-      stopVoiceHold();
+  document.querySelectorAll("[data-voice-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const [roundId, hole] = button.dataset.voiceToggle.split(":");
+      toggleVoiceRecording(roundId, Number(hole));
     });
-  }
-
-  document.querySelectorAll("[data-voice-entry]").forEach(bindVoiceHold);
-  document.querySelectorAll("[data-voice-surface]").forEach(bindVoiceHold);
+  });
 
   document.querySelectorAll("[data-mobile-hole-prev]").forEach((button) => {
     button.addEventListener("click", () => {
