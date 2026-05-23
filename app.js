@@ -171,6 +171,9 @@ let remoteLastSeenAt = 0;
 const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY);
 const clientId = getClientId();
 let voiceRecognition = null;
+let voicePressActive = false;
+let voicePending = null;
+let voiceFinishTimer = null;
 
 if (new URLSearchParams(window.location.search).has("reset")) {
   localStorage.removeItem(AUTH_KEY);
@@ -2055,9 +2058,9 @@ function renderVoiceEntryButton() {
   return `
     <button class="voice-button" data-voice-entry="${round.id}:${hole.number}">
       <span>●</span>
-      Saisie vocale du trou ${hole.number}
+      Maintenir pour dicter le trou ${hole.number}
     </button>
-    <div class="voice-help">Exemple : Juju 4 avec 2 putts, Ben 5, Greg 3 avec 1 putt.</div>
+    <div class="voice-help">Reste appuyé, dicte toute la partie, puis relâche. Exemple : Juju 4 avec 2 putts, Ben 5, Greg 3 avec 1 putt.</div>
     ${state.voiceEntry?.status ? `<div class="voice-status">${state.voiceEntry.status}</div>` : ""}
   `;
 }
@@ -2223,29 +2226,72 @@ function applyVoiceTranscript(transcript, roundId, holeNumber) {
   renderPreservingPosition();
 }
 
-function startVoiceEntry(roundId, holeNumber) {
+function finishVoiceHold() {
+  if (!voicePending || voicePending.processed) return;
+  voicePending.processed = true;
+  const transcript = voicePending.transcript.trim();
+  const { roundId, holeNumber } = voicePending;
+  voicePending = null;
+  if (!transcript) {
+    state.voiceEntry = { ...state.voiceEntry, status: "Je n'ai rien entendu. Reste appuyé pendant toute la phrase." };
+    saveLocalOnly();
+    renderPreservingPosition();
+    return;
+  }
+  applyVoiceTranscript(transcript, roundId, holeNumber);
+}
+
+function stopVoiceHold() {
+  if (!voicePressActive && !voicePending) return;
+  voicePressActive = false;
+  clearTimeout(voiceFinishTimer);
+  state.voiceEntry = { ...state.voiceEntry, status: "Analyse de la dictée..." };
+  saveLocalOnly();
+  if (voiceRecognition) {
+    try {
+      voiceRecognition.stop();
+    } catch {
+      finishVoiceHold();
+    }
+  }
+  voiceFinishTimer = setTimeout(finishVoiceHold, 1200);
+}
+
+function startVoiceHold(roundId, holeNumber) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
     alert("La dictée vocale n'est pas disponible dans ce navigateur. Sur iPhone, teste plutôt avec Safari.");
     return;
   }
   if (voiceRecognition) voiceRecognition.abort();
+  clearTimeout(voiceFinishTimer);
+  voicePressActive = true;
+  voicePending = { roundId, holeNumber, transcript: "", processed: false };
   voiceRecognition = new SpeechRecognition();
   voiceRecognition.lang = "fr-FR";
-  voiceRecognition.interimResults = false;
+  voiceRecognition.interimResults = true;
   voiceRecognition.maxAlternatives = 1;
-  voiceRecognition.continuous = false;
-  state.voiceEntry = { ...state.voiceEntry, holeNumber, transcript: "", parsed: null, status: "J'écoute toute la partie..." };
+  voiceRecognition.continuous = true;
+  state.voiceEntry = { ...state.voiceEntry, holeNumber, transcript: "", parsed: null, status: "Enregistrement en cours... relâche pour valider." };
   saveLocalOnly();
-  renderPreservingPosition();
   voiceRecognition.onresult = (event) => {
-    const transcript = event.results?.[0]?.[0]?.transcript || "";
-    applyVoiceTranscript(transcript, roundId, holeNumber);
+    let transcript = "";
+    for (let index = 0; index < event.results.length; index += 1) {
+      transcript += ` ${event.results[index]?.[0]?.transcript || ""}`;
+    }
+    if (voicePending) voicePending.transcript = transcript.trim();
+    if (!voicePressActive) finishVoiceHold();
   };
   voiceRecognition.onerror = () => {
-    state.voiceEntry = { ...state.voiceEntry, status: "Je n'ai pas bien entendu. Réessaie." };
+    voicePressActive = false;
+    if (voicePending) voicePending.processed = true;
+    voicePending = null;
+    state.voiceEntry = { ...state.voiceEntry, status: "Je n'ai pas bien entendu. Réessaie en restant appuyé." };
     saveLocalOnly();
     renderPreservingPosition();
+  };
+  voiceRecognition.onend = () => {
+    if (!voicePressActive) finishVoiceHold();
   };
   voiceRecognition.start();
 }
@@ -2883,9 +2929,24 @@ function bindEvents() {
   });
 
   document.querySelectorAll("[data-voice-entry]").forEach((button) => {
-    button.addEventListener("click", () => {
+    const start = (event) => {
+      event.preventDefault();
       const [roundId, hole] = button.dataset.voiceEntry.split(":");
-      startVoiceEntry(roundId, Number(hole));
+      if (button.setPointerCapture) button.setPointerCapture(event.pointerId);
+      button.classList.add("recording");
+      startVoiceHold(roundId, Number(hole));
+    };
+    const stop = (event) => {
+      event.preventDefault();
+      button.classList.remove("recording");
+      stopVoiceHold();
+    };
+    button.addEventListener("pointerdown", start);
+    button.addEventListener("pointerup", stop);
+    button.addEventListener("pointercancel", stop);
+    button.addEventListener("lostpointercapture", () => {
+      button.classList.remove("recording");
+      stopVoiceHold();
     });
   });
 

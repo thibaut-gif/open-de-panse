@@ -1350,6 +1350,8 @@ button {
   background: var(--ink);
   color: white;
   font-weight: 900;
+  touch-action: none;
+  user-select: none;
 }
 
 .voice-button span {
@@ -1362,6 +1364,20 @@ button {
   background: var(--red);
   color: var(--red);
   vertical-align: middle;
+}
+
+.voice-button.recording,
+.voice-button:active {
+  background: var(--red);
+  border-color: var(--red);
+  transform: scale(0.99);
+}
+
+.voice-button.recording span,
+.voice-button:active span {
+  background: white;
+  color: white;
+  box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.18);
 }
 
 .voice-help {
