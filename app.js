@@ -172,6 +172,8 @@ const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY)
 const clientId = getClientId();
 let voiceRecognition = null;
 let voicePressActive = false;
+let voiceHoldArmed = false;
+let voiceStartTimer = null;
 let voicePending = null;
 let voiceFinishTimer = null;
 
@@ -218,7 +220,7 @@ function createInitialState() {
     homePreviewRoundId: "",
     activeScoreCell: null,
     activeMobileHole: 1,
-    voiceEntry: { holeNumber: 1, playerIndex: 0, transcript: "", parsed: null, status: "" },
+    voiceEntry: { holeNumber: 1, playerIndex: 0, transcript: "", parsed: null, status: "", flashedCells: [], recording: false },
     seenNotificationCount: 0,
     showPositionRace: false,
     anonymizeParticipantLeaderboards: true,
@@ -1962,14 +1964,16 @@ function renderGroupScoreGrid(roundId, course, players) {
                 const type = underParType(hole.par, gross);
                 const activeScore = activeCellMatches(roundId, player.id, hole.number, "score");
                 const activePutt = activeCellMatches(roundId, player.id, hole.number, "putt");
+                const flashScore = shouldFlashVoiceCell(roundId, player.id, hole.number, "score");
+                const flashPutt = shouldFlashVoiceCell(roundId, player.id, hole.number, "putt");
                 return `
-                  <td class="${type ? "under-par-cell" : ""} ${activeScore ? "active-score-cell" : ""}">
+                  <td class="${type ? "under-par-cell" : ""} ${activeScore ? "active-score-cell" : ""} ${flashScore ? "voice-filled" : ""}">
                     <button class="grid-score-button" data-score-cell="${roundId}:${player.id}:${hole.number}:score" aria-label="${player.name} score trou ${hole.number}">
                       ${gross || ""}
                     </button>
                     <small>${points ?? "-"} pt${points > 1 ? "s" : ""} · ${strokes >= 0 ? "+" : ""}${strokes}</small>
                   </td>
-                  <td class="${activePutt ? "active-score-cell" : ""}">
+                  <td class="${activePutt ? "active-score-cell" : ""} ${flashPutt ? "voice-filled" : ""}">
                     <button class="grid-score-button putt-button" data-score-cell="${roundId}:${player.id}:${hole.number}:putt" aria-label="${player.name} putts trou ${hole.number}">
                       ${putts || ""}
                     </button>
@@ -2013,17 +2017,19 @@ function renderMobileHoleEntry(roundId, course, players) {
           const points = stablefordPoints(hole.par, gross, strokes);
           const activeScore = activeCellMatches(roundId, player.id, hole.number, "score");
           const activePutt = activeCellMatches(roundId, player.id, hole.number, "putt");
+          const flashScore = shouldFlashVoiceCell(roundId, player.id, hole.number, "score");
+          const flashPutt = shouldFlashVoiceCell(roundId, player.id, hole.number, "putt");
           return `
             <div class="mobile-player-score-row">
               <button class="mobile-player-name ${activeScore || activePutt ? "active" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:score">
                 <strong>${player.name}</strong>
                 <small>${points ?? "-"} pt${points > 1 ? "s" : ""} · ${strokes >= 0 ? "+" : ""}${strokes} rendu</small>
               </button>
-              <button class="mobile-player-value ${activeScore ? "active" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:score">
+              <button class="mobile-player-value ${activeScore ? "active" : ""} ${flashScore ? "voice-filled" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:score">
                 <span>Score</span>
                 <b>${gross || ""}</b>
               </button>
-              <button class="mobile-player-value ${activePutt ? "active" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:putt">
+              <button class="mobile-player-value ${activePutt ? "active" : ""} ${flashPutt ? "voice-filled" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:putt">
                 <span>P</span>
                 <b>${putts || ""}</b>
               </button>
@@ -2051,6 +2057,14 @@ function renderMobileKeypad() {
   `;
 }
 
+function voiceCellKey(roundId, playerId, holeNumber, kind) {
+  return `${roundId}:${playerId}:${holeNumber}:${kind}`;
+}
+
+function shouldFlashVoiceCell(roundId, playerId, holeNumber, kind) {
+  return state.voiceEntry?.flashedCells?.includes(voiceCellKey(roundId, playerId, holeNumber, kind));
+}
+
 function renderVoiceEntryButton() {
   const round = selectedRound();
   const course = courseForRound(round.id);
@@ -2059,6 +2073,10 @@ function renderVoiceEntryButton() {
     <div class="voice-pad" data-voice-entry="${round.id}:${hole.number}" role="button" tabindex="0">
       <span>●</span>
       Maintenir pour parler
+    </div>
+    <div class="voice-recording-indicator ${state.voiceEntry?.recording ? "show" : ""}">
+      <span></span>
+      Enregistrement en cours
     </div>
     <div class="voice-help">Reste appuyé ici, ou sur un espace vide de la fiche, puis relâche. Exemple : Juju 4 avec 2 putts, Ben 5, Greg 3 avec 1 putt.</div>
     ${state.voiceEntry?.status ? `<div class="voice-status">${state.voiceEntry.status}</div>` : ""}
@@ -2206,19 +2224,22 @@ function applyVoiceTranscript(transcript, roundId, holeNumber) {
   const players = activeGroupPlayers();
   const parsed = parseVoiceHoleTranscript(transcript, players);
   if (!parsed.length) {
-    state.voiceEntry = { ...state.voiceEntry, transcript, status: "Je n'ai pas reconnu de score associé à un joueur de cette partie." };
+    state.voiceEntry = { ...state.voiceEntry, transcript, recording: false, flashedCells: [], status: "Je n'ai pas reconnu de score associé à un joueur de cette partie." };
     saveLocalOnly();
     renderPreservingPosition();
     return;
   }
+  const flashedCells = [];
   parsed.forEach((item) => {
     setGross(roundId, item.player.id, holeNumber, item.score, { localOnly: true, keepFocus: true });
-    if (item.putts) setPutts(roundId, item.player.id, holeNumber, item.putts);
+    flashedCells.push(voiceCellKey(roundId, item.player.id, holeNumber, "score"));
+    if (item.putts) {
+      setPutts(roundId, item.player.id, holeNumber, item.putts);
+      flashedCells.push(voiceCellKey(roundId, item.player.id, holeNumber, "putt"));
+    }
   });
   const missingScore = players.find((player) => !getGross(roundId, player.id, holeNumber));
   const firstPutt = players.find((player) => !getPutts(roundId, player.id, holeNumber));
-  const course = courseForRound(roundId);
-  const nextHole = course.holes.find((hole) => hole.number > holeNumber);
   state.activeScoreCell = missingScore
     ? { roundId, playerId: missingScore.id, holeNumber, kind: "score" }
     : firstPutt
@@ -2227,20 +2248,14 @@ function applyVoiceTranscript(transcript, roundId, holeNumber) {
   const withPutts = parsed.filter((item) => item.putts).length;
   const ignoredPutts = parsed.filter((item) => item.ignoredPutts).length;
   const complete = players.every((player) => getGross(roundId, player.id, holeNumber));
-  if (complete && nextHole && players[0]) {
-    state.activeMobileHole = nextHole.number;
-    state.activeScoreCell = { roundId, playerId: players[0].id, holeNumber: nextHole.number, kind: "score" };
-  }
   state.voiceEntry = {
     ...state.voiceEntry,
     transcript,
     parsed,
-    status: `${parsed.length} score(s) reconnu(s), ${withPutts} putt(s) renseigné(s)${ignoredPutts ? `, ${ignoredPutts} putt(s) ignoré(s) car incohérent(s)` : ""}${complete ? ". Trou validé." : "."}`,
+    flashedCells,
+    recording: false,
+    status: `${parsed.length} score(s) reconnu(s), ${withPutts} putt(s) renseigné(s)${ignoredPutts ? `, ${ignoredPutts} putt(s) ignoré(s) car incohérent(s)` : ""}${complete ? ". Vérifie puis valide le trou." : "."}`,
   };
-  if (complete) {
-    validateHole(roundId, state.selectedGroupId, holeNumber);
-    return;
-  }
   saveLocalOnly();
   scheduleRemoteSave();
   renderPreservingPosition();
@@ -2253,7 +2268,7 @@ function finishVoiceHold() {
   const { roundId, holeNumber } = voicePending;
   voicePending = null;
   if (!transcript) {
-    state.voiceEntry = { ...state.voiceEntry, status: "Je n'ai rien entendu. Reste appuyé pendant toute la phrase." };
+    state.voiceEntry = { ...state.voiceEntry, recording: false, status: "Je n'ai rien entendu. Reste appuyé pendant toute la phrase." };
     saveLocalOnly();
     renderPreservingPosition();
     return;
@@ -2262,10 +2277,17 @@ function finishVoiceHold() {
 }
 
 function stopVoiceHold() {
-  if (!voicePressActive && !voicePending) return;
+  clearTimeout(voiceStartTimer);
+  voiceHoldArmed = false;
+  if (!voicePressActive && !voicePending) {
+    state.voiceEntry = { ...state.voiceEntry, recording: false, status: "" };
+    saveLocalOnly();
+    renderPreservingPosition();
+    return;
+  }
   voicePressActive = false;
   clearTimeout(voiceFinishTimer);
-  state.voiceEntry = { ...state.voiceEntry, status: "Analyse de la dictée..." };
+  state.voiceEntry = { ...state.voiceEntry, recording: false, status: "Analyse de la dictée..." };
   saveLocalOnly();
   if (voiceRecognition) {
     try {
@@ -2285,6 +2307,7 @@ function startVoiceHold(roundId, holeNumber) {
   }
   if (voiceRecognition) voiceRecognition.abort();
   clearTimeout(voiceFinishTimer);
+  voiceHoldArmed = false;
   voicePressActive = true;
   voicePending = { roundId, holeNumber, transcript: "", processed: false };
   voiceRecognition = new SpeechRecognition();
@@ -2292,7 +2315,7 @@ function startVoiceHold(roundId, holeNumber) {
   voiceRecognition.interimResults = true;
   voiceRecognition.maxAlternatives = 1;
   voiceRecognition.continuous = true;
-  state.voiceEntry = { ...state.voiceEntry, holeNumber, transcript: "", parsed: null, status: "Enregistrement en cours... relâche pour valider." };
+  state.voiceEntry = { ...state.voiceEntry, holeNumber, transcript: "", parsed: null, flashedCells: [], recording: true, status: "Enregistrement en cours... relâche pour analyser." };
   saveLocalOnly();
   voiceRecognition.onresult = (event) => {
     let transcript = "";
@@ -2306,7 +2329,7 @@ function startVoiceHold(roundId, holeNumber) {
     voicePressActive = false;
     if (voicePending) voicePending.processed = true;
     voicePending = null;
-    state.voiceEntry = { ...state.voiceEntry, status: "Je n'ai pas bien entendu. Réessaie en restant appuyé." };
+    state.voiceEntry = { ...state.voiceEntry, recording: false, status: "Je n'ai pas bien entendu. Réessaie en restant appuyé." };
     saveLocalOnly();
     renderPreservingPosition();
   };
@@ -2957,11 +2980,22 @@ function bindEvents() {
       const source = event.currentTarget;
       const [roundId, hole] = (source.dataset.voiceEntry || source.dataset.voiceSurface).split(":");
       if (source.setPointerCapture) source.setPointerCapture(event.pointerId);
-      source.classList.add("recording");
-      startVoiceHold(roundId, Number(hole));
+      voiceHoldArmed = true;
+      source.classList.add("arming");
+      state.voiceEntry = { ...state.voiceEntry, status: "Maintiens encore pour activer le micro..." };
+      saveLocalOnly();
+      voiceStartTimer = setTimeout(() => {
+        if (!voiceHoldArmed) return;
+        source.classList.remove("arming");
+        source.classList.add("recording");
+        startVoiceHold(roundId, Number(hole));
+      }, 1300);
     };
     const stop = (event) => {
       event.preventDefault();
+      clearTimeout(voiceStartTimer);
+      voiceHoldArmed = false;
+      event.currentTarget.classList.remove("arming");
       event.currentTarget.classList.remove("recording");
       stopVoiceHold();
     };
@@ -2969,6 +3003,9 @@ function bindEvents() {
     element.addEventListener("pointerup", stop);
     element.addEventListener("pointercancel", stop);
     element.addEventListener("lostpointercapture", () => {
+      clearTimeout(voiceStartTimer);
+      voiceHoldArmed = false;
+      element.classList.remove("arming");
       element.classList.remove("recording");
       stopVoiceHold();
     });

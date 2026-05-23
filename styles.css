@@ -1372,11 +1372,25 @@ button {
   vertical-align: middle;
 }
 
+.voice-pad.arming,
 .voice-pad.recording,
 .voice-pad:active {
+  transform: scale(0.99);
+}
+
+.voice-pad.arming {
+  background: #5f6d66;
+  border-color: #5f6d66;
+}
+
+.voice-pad.recording {
   background: var(--red);
   border-color: var(--red);
-  transform: scale(0.99);
+}
+
+.mobile-hole-card.arming {
+  outline: 4px solid rgba(95, 109, 102, 0.26);
+  box-shadow: 0 0 0 8px rgba(95, 109, 102, 0.1);
 }
 
 .mobile-hole-card.recording {
@@ -1384,12 +1398,69 @@ button {
   box-shadow: 0 0 0 8px rgba(188, 61, 61, 0.12);
 }
 
+.voice-pad.arming span,
 .voice-pad.recording span,
 .voice-pad:active span,
 .mobile-hole-card.recording .voice-pad span {
   background: white;
   color: white;
   box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.18);
+}
+
+.voice-recording-indicator {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 10px;
+  border-radius: 999px;
+  background: #fff0f0;
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.voice-recording-indicator.show {
+  display: flex;
+}
+
+.voice-recording-indicator span {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--red);
+  animation: voicePulse 1s ease-in-out infinite;
+}
+
+.voice-filled {
+  animation: voiceFilledFlash 1.8s ease-in-out 3;
+}
+
+.mobile-player-value.voice-filled b,
+.voice-filled .grid-score-button {
+  background: #fff3c4;
+  border-color: var(--gold);
+}
+
+@keyframes voicePulse {
+  0%, 100% {
+    transform: scale(0.9);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.28);
+    opacity: 1;
+  }
+}
+
+@keyframes voiceFilledFlash {
+  0%, 100% {
+    box-shadow: none;
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(183, 125, 18, 0.22);
+  }
 }
 
 .voice-help {
