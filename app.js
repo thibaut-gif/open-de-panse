@@ -1995,7 +1995,7 @@ function renderMobileHoleEntry(roundId, course, players) {
   const hole = course.holes.find((item) => item.number === state.activeMobileHole) || course.holes[0];
   const complete = players.every((player) => getGross(roundId, player.id, hole.number));
   return `
-    <div class="mobile-hole-card">
+    <div class="mobile-hole-card" data-voice-surface="${roundId}:${hole.number}">
       <div class="mobile-hole-header">
         <button class="btn" data-mobile-hole-prev>Précédent</button>
         <div>
@@ -2056,11 +2056,11 @@ function renderVoiceEntryButton() {
   const course = courseForRound(round.id);
   const hole = course.holes.find((item) => item.number === state.activeMobileHole) || course.holes[0];
   return `
-    <button class="voice-button" data-voice-entry="${round.id}:${hole.number}">
+    <div class="voice-pad" data-voice-entry="${round.id}:${hole.number}" role="button" tabindex="0">
       <span>●</span>
-      Maintenir pour dicter le trou ${hole.number}
-    </button>
-    <div class="voice-help">Reste appuyé, dicte toute la partie, puis relâche. Exemple : Juju 4 avec 2 putts, Ben 5, Greg 3 avec 1 putt.</div>
+      Maintenir pour parler
+    </div>
+    <div class="voice-help">Reste appuyé ici, ou sur un espace vide de la fiche, puis relâche. Exemple : Juju 4 avec 2 putts, Ben 5, Greg 3 avec 1 putt.</div>
     ${state.voiceEntry?.status ? `<div class="voice-status">${state.voiceEntry.status}</div>` : ""}
   `;
 }
@@ -2155,6 +2155,10 @@ function findVoicePlayerMentions(transcript, players) {
     .filter((mention, index, all) => !all.slice(0, index).some((other) => other.player.id === mention.player.id && Math.abs(other.index - mention.index) < 3));
 }
 
+function isCrediblePuttCount(score, putts) {
+  return Number.isFinite(putts) && putts > 0 && putts < score && putts <= 6;
+}
+
 function parseVoiceHoleTranscript(transcript, players) {
   const text = normalizeVoiceText(transcript);
   const mentions = findVoicePlayerMentions(transcript, players);
@@ -2162,10 +2166,14 @@ function parseVoiceHoleTranscript(transcript, players) {
     const next = mentions[index + 1];
     const chunk = text.slice(mention.index + mention.alias.length, next ? next.index : text.length);
     const numbers = spokenNumbers(chunk);
+    const score = numbers[0] || null;
+    const rawPutts = numbers[1] || null;
+    const putts = score && rawPutts && isCrediblePuttCount(score, rawPutts) ? rawPutts : null;
     return {
       player: mention.player,
-      score: numbers[0] || null,
-      putts: numbers[1] || null,
+      score,
+      putts,
+      ignoredPutts: Boolean(score && rawPutts && !putts),
     };
   }).filter((item) => item.score);
 }
@@ -2209,18 +2217,30 @@ function applyVoiceTranscript(transcript, roundId, holeNumber) {
   });
   const missingScore = players.find((player) => !getGross(roundId, player.id, holeNumber));
   const firstPutt = players.find((player) => !getPutts(roundId, player.id, holeNumber));
+  const course = courseForRound(roundId);
+  const nextHole = course.holes.find((hole) => hole.number > holeNumber);
   state.activeScoreCell = missingScore
     ? { roundId, playerId: missingScore.id, holeNumber, kind: "score" }
     : firstPutt
       ? { roundId, playerId: firstPutt.id, holeNumber, kind: "putt" }
       : { roundId, playerId: players[0]?.id || parsed[0].player.id, holeNumber, kind: "score" };
   const withPutts = parsed.filter((item) => item.putts).length;
+  const ignoredPutts = parsed.filter((item) => item.ignoredPutts).length;
+  const complete = players.every((player) => getGross(roundId, player.id, holeNumber));
+  if (complete && nextHole && players[0]) {
+    state.activeMobileHole = nextHole.number;
+    state.activeScoreCell = { roundId, playerId: players[0].id, holeNumber: nextHole.number, kind: "score" };
+  }
   state.voiceEntry = {
     ...state.voiceEntry,
     transcript,
     parsed,
-    status: `${parsed.length} score(s) reconnu(s), ${withPutts} putt(s) renseigné(s).`,
+    status: `${parsed.length} score(s) reconnu(s), ${withPutts} putt(s) renseigné(s)${ignoredPutts ? `, ${ignoredPutts} putt(s) ignoré(s) car incohérent(s)` : ""}${complete ? ". Trou validé." : "."}`,
   };
+  if (complete) {
+    validateHole(roundId, state.selectedGroupId, holeNumber);
+    return;
+  }
   saveLocalOnly();
   scheduleRemoteSave();
   renderPreservingPosition();
@@ -2928,27 +2948,34 @@ function bindEvents() {
     button.addEventListener("click", clearActiveScore);
   });
 
-  document.querySelectorAll("[data-voice-entry]").forEach((button) => {
+  function bindVoiceHold(element) {
     const start = (event) => {
+      const isVoicePad = Boolean(event.currentTarget.dataset.voiceEntry);
+      if (!isVoicePad && event.target.closest("[data-voice-entry]")) return;
+      if (!isVoicePad && event.target.closest("button, input, select, label, a")) return;
       event.preventDefault();
-      const [roundId, hole] = button.dataset.voiceEntry.split(":");
-      if (button.setPointerCapture) button.setPointerCapture(event.pointerId);
-      button.classList.add("recording");
+      const source = event.currentTarget;
+      const [roundId, hole] = (source.dataset.voiceEntry || source.dataset.voiceSurface).split(":");
+      if (source.setPointerCapture) source.setPointerCapture(event.pointerId);
+      source.classList.add("recording");
       startVoiceHold(roundId, Number(hole));
     };
     const stop = (event) => {
       event.preventDefault();
-      button.classList.remove("recording");
+      event.currentTarget.classList.remove("recording");
       stopVoiceHold();
     };
-    button.addEventListener("pointerdown", start);
-    button.addEventListener("pointerup", stop);
-    button.addEventListener("pointercancel", stop);
-    button.addEventListener("lostpointercapture", () => {
-      button.classList.remove("recording");
+    element.addEventListener("pointerdown", start);
+    element.addEventListener("pointerup", stop);
+    element.addEventListener("pointercancel", stop);
+    element.addEventListener("lostpointercapture", () => {
+      element.classList.remove("recording");
       stopVoiceHold();
     });
-  });
+  }
+
+  document.querySelectorAll("[data-voice-entry]").forEach(bindVoiceHold);
+  document.querySelectorAll("[data-voice-surface]").forEach(bindVoiceHold);
 
   document.querySelectorAll("[data-mobile-hole-prev]").forEach((button) => {
     button.addEventListener("click", () => {

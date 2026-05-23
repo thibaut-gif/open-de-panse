@@ -1341,7 +1341,7 @@ button {
   width: 100%;
 }
 
-.voice-button {
+.voice-pad {
   width: 100%;
   min-height: 46px;
   margin: 0 0 10px;
@@ -1352,9 +1352,15 @@ button {
   font-weight: 900;
   touch-action: none;
   user-select: none;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  place-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
-.voice-button span {
+.voice-pad span {
   display: inline-grid;
   width: 20px;
   height: 20px;
@@ -1366,15 +1372,21 @@ button {
   vertical-align: middle;
 }
 
-.voice-button.recording,
-.voice-button:active {
+.voice-pad.recording,
+.voice-pad:active {
   background: var(--red);
   border-color: var(--red);
   transform: scale(0.99);
 }
 
-.voice-button.recording span,
-.voice-button:active span {
+.mobile-hole-card.recording {
+  outline: 4px solid rgba(188, 61, 61, 0.32);
+  box-shadow: 0 0 0 8px rgba(188, 61, 61, 0.12);
+}
+
+.voice-pad.recording span,
+.voice-pad:active span,
+.mobile-hole-card.recording .voice-pad span {
   background: white;
   color: white;
   box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.18);
