@@ -214,6 +214,7 @@ function createInitialState() {
     homePreviewRoundId: "",
     activeScoreCell: null,
     activeMobileHole: 1,
+    playerStatsScope: {},
     seenNotificationCount: 0,
     showPositionRace: false,
     anonymizeParticipantLeaderboards: true,
@@ -290,6 +291,7 @@ function applyRemoteState(data) {
     homePreviewRoundId: state.homePreviewRoundId,
     activeScoreCell: state.activeScoreCell,
     activeMobileHole: state.activeMobileHole,
+    playerStatsScope: state.playerStatsScope,
     showPositionRace: state.showPositionRace,
     seenNotificationCount: state.seenNotificationCount,
   };
@@ -725,7 +727,7 @@ function sortedLeaderboard(mode = "round") {
   }).sort((a, b) => b.stats.points - a.stats.points || b.stats.holesPlayed - a.stats.holesPlayed || a.stats.grossTotal - b.stats.grossTotal);
 }
 
-function grossSouterrainesStats(player) {
+function grossSouterrainesStats(player, roundIds = null) {
   const stats = {
     grossTotal: 0,
     relative: 0,
@@ -741,7 +743,8 @@ function grossSouterrainesStats(player) {
     onePutts: 0,
     threePutts: 0,
   };
-  state.rounds.forEach((round) => {
+  const selectedRoundIds = roundIds ? new Set(roundIds) : null;
+  state.rounds.filter((round) => !selectedRoundIds || selectedRoundIds.has(round.id)).forEach((round) => {
     const course = courseForRound(round.id);
     course.holes.forEach((hole) => {
       const gross = getGross(round.id, player.id, hole.number);
@@ -2139,13 +2142,27 @@ function renderPlayers() {
 }
 
 function renderPlayerStats(player) {
-  const grossStats = grossSouterrainesStats(player);
-  const stableford = cumulativeStats(player);
+  const scope = state.playerStatsScope?.[player.id] || "total";
+  const isTotal = scope === "total";
+  const round = state.rounds.find((item) => item.id === scope);
+  const grossStats = grossSouterrainesStats(player, isTotal ? null : [scope]);
+  const stableford = isTotal ? cumulativeStats(player) : playerRoundStats(player, scope);
   const triplesPlus = grossStats.triples + grossStats.quadruples;
-  const puttLabel = grossStats.puttHoles ? `${grossStats.puttsAverage.toFixed(1)} moy.` : "-";
+  const puttLabel = grossStats.puttHoles ? grossStats.puttsTotal : "-";
+  const label = isTotal ? "Total compétition" : `Tour ${round?.number || ""} - ${round ? courseName(round.courseId) : ""}`;
   return `
     <details class="player-stats">
       <summary>Statistiques</summary>
+      <div class="player-stats-toolbar">
+        <label>
+          Périmètre
+          <select data-player-stats-scope="${player.id}">
+            <option value="total" ${isTotal ? "selected" : ""}>Total compétition</option>
+            ${state.rounds.map((item) => `<option value="${item.id}" ${scope === item.id ? "selected" : ""}>Tour ${item.number} - ${courseName(item.courseId)}</option>`).join("")}
+          </select>
+        </label>
+        <span>${label}</span>
+      </div>
       <div class="player-stats-grid">
         <div><span>Birdies</span><strong>${grossStats.birdies}</strong></div>
         <div><span>Pars</span><strong>${grossStats.pars}</strong></div>
@@ -2155,7 +2172,7 @@ function renderPlayerStats(player) {
         <div><span>Stableford</span><strong>${stableford.points}</strong></div>
         <div><span>Trous joués</span><strong>${grossStats.holesPlayed}</strong></div>
         <div><span>Brut</span><strong>${grossStats.grossTotal || "-"}</strong></div>
-        <div><span>Putts</span><strong>${puttLabel}</strong></div>
+        <div><span>Putts total</span><strong>${puttLabel}</strong></div>
         <div><span>3 putts +</span><strong>${grossStats.puttHoles ? grossStats.threePutts : "-"}</strong></div>
       </div>
     </details>
@@ -2782,6 +2799,15 @@ function bindEvents() {
         player.id === input.dataset.playerHandicap ? { ...player, handicap, initialHandicap: handicap } : player
       ));
       saveState();
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-player-stats-scope]").forEach((select) => {
+    select.addEventListener("change", () => {
+      if (!state.playerStatsScope) state.playerStatsScope = {};
+      state.playerStatsScope[select.dataset.playerStatsScope] = select.value;
+      saveLocalOnly();
       render();
     });
   });
