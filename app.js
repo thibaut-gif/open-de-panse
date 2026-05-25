@@ -170,10 +170,6 @@ let remotePollTimer = null;
 let remoteLastSeenAt = 0;
 const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY);
 const clientId = getClientId();
-let voiceRecognition = null;
-let voicePressActive = false;
-let voicePending = null;
-let voiceFinishTimer = null;
 
 if (new URLSearchParams(window.location.search).has("reset")) {
   localStorage.removeItem(AUTH_KEY);
@@ -218,7 +214,6 @@ function createInitialState() {
     homePreviewRoundId: "",
     activeScoreCell: null,
     activeMobileHole: 1,
-    voiceEntry: { holeNumber: 1, playerIndex: 0, transcript: "", parsed: null, status: "", flashedCells: [], recording: false },
     seenNotificationCount: 0,
     showPositionRace: false,
     anonymizeParticipantLeaderboards: true,
@@ -295,7 +290,6 @@ function applyRemoteState(data) {
     homePreviewRoundId: state.homePreviewRoundId,
     activeScoreCell: state.activeScoreCell,
     activeMobileHole: state.activeMobileHole,
-    voiceEntry: state.voiceEntry,
     showPositionRace: state.showPositionRace,
     seenNotificationCount: state.seenNotificationCount,
   };
@@ -1962,16 +1956,14 @@ function renderGroupScoreGrid(roundId, course, players) {
                 const type = underParType(hole.par, gross);
                 const activeScore = activeCellMatches(roundId, player.id, hole.number, "score");
                 const activePutt = activeCellMatches(roundId, player.id, hole.number, "putt");
-                const flashScore = shouldFlashVoiceCell(roundId, player.id, hole.number, "score");
-                const flashPutt = shouldFlashVoiceCell(roundId, player.id, hole.number, "putt");
                 return `
-                  <td class="${type ? "under-par-cell" : ""} ${activeScore ? "active-score-cell" : ""} ${flashScore ? "voice-filled" : ""}">
+                  <td class="${type ? "under-par-cell" : ""} ${activeScore ? "active-score-cell" : ""}">
                     <button class="grid-score-button" data-score-cell="${roundId}:${player.id}:${hole.number}:score" aria-label="${player.name} score trou ${hole.number}">
                       ${gross || ""}
                     </button>
                     <small>${points ?? "-"} pt${points > 1 ? "s" : ""} · ${strokes >= 0 ? "+" : ""}${strokes}</small>
                   </td>
-                  <td class="${activePutt ? "active-score-cell" : ""} ${flashPutt ? "voice-filled" : ""}">
+                  <td class="${activePutt ? "active-score-cell" : ""}">
                     <button class="grid-score-button putt-button" data-score-cell="${roundId}:${player.id}:${hole.number}:putt" aria-label="${player.name} putts trou ${hole.number}">
                       ${putts || ""}
                     </button>
@@ -2006,29 +1998,26 @@ function renderMobileHoleEntry(roundId, course, players) {
         </div>
         <button class="btn" data-mobile-hole-next>Suivant</button>
       </div>
-      ${renderVoiceEntryButton()}
       <div class="mobile-score-list">
         ${players.map((player) => {
           const gross = getGross(roundId, player.id, hole.number);
-          const putts = getPutts(roundId, player.id, hole.number);
+      const putts = getPutts(roundId, player.id, hole.number);
           const stats = playerRoundStats(player, roundId);
           const strokes = strokesOnHole(stats.handicapValue, hole.strokeIndex);
           const points = stablefordPoints(hole.par, gross, strokes);
           const activeScore = activeCellMatches(roundId, player.id, hole.number, "score");
           const activePutt = activeCellMatches(roundId, player.id, hole.number, "putt");
-          const flashScore = shouldFlashVoiceCell(roundId, player.id, hole.number, "score");
-          const flashPutt = shouldFlashVoiceCell(roundId, player.id, hole.number, "putt");
           return `
             <div class="mobile-player-score-row">
               <button class="mobile-player-name ${activeScore || activePutt ? "active" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:score">
                 <strong>${player.name}</strong>
                 <small>${points ?? "-"} pt${points > 1 ? "s" : ""} · ${strokes >= 0 ? "+" : ""}${strokes} rendu</small>
               </button>
-              <button class="mobile-player-value ${activeScore ? "active" : ""} ${flashScore ? "voice-filled" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:score">
+              <button class="mobile-player-value ${activeScore ? "active" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:score">
                 <span>Score</span>
                 <b>${gross || ""}</b>
               </button>
-              <button class="mobile-player-value ${activePutt ? "active" : ""} ${flashPutt ? "voice-filled" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:putt">
+              <button class="mobile-player-value ${activePutt ? "active" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:putt">
                 <span>P</span>
                 <b>${putts || ""}</b>
               </button>
@@ -2055,32 +2044,6 @@ function renderMobileKeypad() {
   `;
 }
 
-function voiceCellKey(roundId, playerId, holeNumber, kind) {
-  return `${roundId}:${playerId}:${holeNumber}:${kind}`;
-}
-
-function shouldFlashVoiceCell(roundId, playerId, holeNumber, kind) {
-  return state.voiceEntry?.flashedCells?.includes(voiceCellKey(roundId, playerId, holeNumber, kind));
-}
-
-function renderVoiceEntryButton() {
-  const round = selectedRound();
-  const course = courseForRound(round.id);
-  const hole = course.holes.find((item) => item.number === state.activeMobileHole) || course.holes[0];
-  return `
-    <div class="voice-control">
-      <button class="voice-record-button ${state.voiceEntry?.recording ? "recording" : ""}" data-voice-toggle="${round.id}:${hole.number}" aria-label="Enregistrer les scores du trou">
-        <span></span>
-      </button>
-      <div>
-        <strong>${state.voiceEntry?.recording ? "Enregistrement..." : "Dictée du trou"}</strong>
-        <small>${state.voiceEntry?.recording ? "Appuie de nouveau pour arrêter" : "Appuie, dicte la partie, puis rappuie"}</small>
-      </div>
-    </div>
-    ${state.voiceEntry?.status ? `<div class="voice-status">${state.voiceEntry.status}</div>` : ""}
-  `;
-}
-
 function renderFloatingKeypad() {
   const active = state.activeScoreCell;
   const player = active ? state.players.find((item) => item.id === active.playerId) : null;
@@ -2097,101 +2060,8 @@ function renderFloatingKeypad() {
           <button class="keypad-key" data-keypad-score="${value}">${value}</button>
         `).join("")}
       </div>
-      ${renderVoiceEntryButton()}
     </div>
   `;
-}
-
-function spokenNumbers(text) {
-  const normalized = normalizeVoiceText(text)
-    .replace(/\bun\b/g, "1")
-    .replace(/\bune\b/g, "1")
-    .replace(/\bdeux\b/g, "2")
-    .replace(/\btrois\b/g, "3")
-    .replace(/\bquatre\b/g, "4")
-    .replace(/\bcinq\b/g, "5")
-    .replace(/\bsix\b/g, "6")
-    .replace(/\bsept\b/g, "7")
-    .replace(/\bhuit\b/g, "8")
-    .replace(/\bneuf\b/g, "9")
-    .replace(/\bdix\b/g, "10")
-    .replace(/\bonze\b/g, "11")
-    .replace(/\bdouze\b/g, "12");
-  return [...normalized.matchAll(/\d+/g)].map((match) => Number(match[0])).filter((value) => value > 0);
-}
-
-function normalizeVoiceText(text) {
-  return String(text || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function voiceAliasesForPlayer(player) {
-  const aliases = {
-    p1: ["juju"],
-    p2: ["thib", "tib", "thibz", "thibaud", "thibaut"],
-    p3: ["goulu", "gulu"],
-    p4: ["gege", "gg", "gégé"],
-    p5: ["nanou", "nanouz"],
-    p6: ["pierrot"],
-    p7: ["lutcho", "lucho"],
-    p8: ["nonoz"],
-    p9: ["ben", "benouz"],
-    p10: ["manu", "manioulz"],
-    p11: ["la roquette", "laroquette", "roquette"],
-    p12: ["greg", "gregz", "gregzm"],
-  };
-  return [...new Set([player.name, ...(aliases[player.id] || [])].map(normalizeVoiceText).filter(Boolean))];
-}
-
-function findVoicePlayerMentions(transcript, players) {
-  const text = normalizeVoiceText(transcript);
-  const mentions = [];
-  players.forEach((player) => {
-    voiceAliasesForPlayer(player).forEach((alias) => {
-      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const pattern = new RegExp(`(^|\\s)${escaped}(?=\\s|$)`, "g");
-      let match = pattern.exec(text);
-      while (match) {
-        mentions.push({
-          player,
-          index: match.index + match[1].length,
-          alias,
-        });
-        match = pattern.exec(text);
-      }
-    });
-  });
-  return mentions
-    .sort((a, b) => a.index - b.index || b.alias.length - a.alias.length)
-    .filter((mention, index, all) => !all.slice(0, index).some((other) => other.player.id === mention.player.id && Math.abs(other.index - mention.index) < 3));
-}
-
-function isCrediblePuttCount(score, putts) {
-  return Number.isFinite(putts) && putts > 0 && putts < score && putts <= 6;
-}
-
-function parseVoiceHoleTranscript(transcript, players) {
-  const text = normalizeVoiceText(transcript);
-  const mentions = findVoicePlayerMentions(transcript, players);
-  return mentions.map((mention, index) => {
-    const next = mentions[index + 1];
-    const chunk = text.slice(mention.index + mention.alias.length, next ? next.index : text.length);
-    const numbers = spokenNumbers(chunk);
-    const score = numbers[0] || null;
-    const rawPutts = numbers[1] || null;
-    const putts = score && rawPutts && isCrediblePuttCount(score, rawPutts) ? rawPutts : null;
-    return {
-      player: mention.player,
-      score,
-      putts,
-      ignoredPutts: Boolean(score && rawPutts && !putts),
-    };
-  }).filter((item) => item.score);
 }
 
 function advanceToNextScoreCell() {
@@ -2216,130 +2086,6 @@ function advanceToNextScoreCell() {
   }
   saveLocalOnly();
   renderPreservingPosition();
-}
-
-function applyVoiceTranscript(transcript, roundId, holeNumber) {
-  const players = activeGroupPlayers();
-  const parsed = parseVoiceHoleTranscript(transcript, players);
-  if (!parsed.length) {
-    state.voiceEntry = { ...state.voiceEntry, transcript, recording: false, flashedCells: [], status: "Je n'ai pas reconnu de score associé à un joueur de cette partie." };
-    saveLocalOnly();
-    renderPreservingPosition();
-    return;
-  }
-  const flashedCells = [];
-  parsed.forEach((item) => {
-    setGross(roundId, item.player.id, holeNumber, item.score, { localOnly: true, keepFocus: true });
-    flashedCells.push(voiceCellKey(roundId, item.player.id, holeNumber, "score"));
-    if (item.putts) {
-      setPutts(roundId, item.player.id, holeNumber, item.putts);
-      flashedCells.push(voiceCellKey(roundId, item.player.id, holeNumber, "putt"));
-    }
-  });
-  const missingScore = players.find((player) => !getGross(roundId, player.id, holeNumber));
-  const firstPutt = players.find((player) => !getPutts(roundId, player.id, holeNumber));
-  state.activeScoreCell = missingScore
-    ? { roundId, playerId: missingScore.id, holeNumber, kind: "score" }
-    : firstPutt
-      ? { roundId, playerId: firstPutt.id, holeNumber, kind: "putt" }
-      : { roundId, playerId: players[0]?.id || parsed[0].player.id, holeNumber, kind: "score" };
-  const withPutts = parsed.filter((item) => item.putts).length;
-  const ignoredPutts = parsed.filter((item) => item.ignoredPutts).length;
-  const complete = players.every((player) => getGross(roundId, player.id, holeNumber));
-  state.voiceEntry = {
-    ...state.voiceEntry,
-    transcript,
-    parsed,
-    flashedCells,
-    recording: false,
-    status: `${parsed.length} score(s) reconnu(s), ${withPutts} putt(s) renseigné(s)${ignoredPutts ? `, ${ignoredPutts} putt(s) ignoré(s) car incohérent(s)` : ""}${complete ? ". Vérifie puis valide le trou." : "."}`,
-  };
-  saveLocalOnly();
-  scheduleRemoteSave();
-  renderPreservingPosition();
-}
-
-function finishVoiceHold() {
-  if (!voicePending || voicePending.processed) return;
-  voicePending.processed = true;
-  const transcript = voicePending.transcript.trim();
-  const { roundId, holeNumber } = voicePending;
-  voicePending = null;
-  if (!transcript) {
-    state.voiceEntry = { ...state.voiceEntry, recording: false, status: "Je n'ai rien entendu. Appuie, dicte la partie, puis rappuie pour arrêter." };
-    saveLocalOnly();
-    renderPreservingPosition();
-    return;
-  }
-  applyVoiceTranscript(transcript, roundId, holeNumber);
-}
-
-function stopVoiceRecording() {
-  if (!voicePressActive && !voicePending) {
-    state.voiceEntry = { ...state.voiceEntry, recording: false, status: "" };
-    saveLocalOnly();
-    renderPreservingPosition();
-    return;
-  }
-  voicePressActive = false;
-  clearTimeout(voiceFinishTimer);
-  state.voiceEntry = { ...state.voiceEntry, recording: false, status: "Analyse de la dictée..." };
-  saveLocalOnly();
-  if (voiceRecognition) {
-    try {
-      voiceRecognition.stop();
-    } catch {
-      finishVoiceHold();
-    }
-  }
-  voiceFinishTimer = setTimeout(finishVoiceHold, 1200);
-}
-
-function startVoiceRecording(roundId, holeNumber) {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    alert("La dictée vocale n'est pas disponible dans ce navigateur. Sur iPhone, teste plutôt avec Safari.");
-    return;
-  }
-  if (voiceRecognition) voiceRecognition.abort();
-  clearTimeout(voiceFinishTimer);
-  voicePressActive = true;
-  voicePending = { roundId, holeNumber, transcript: "", processed: false };
-  voiceRecognition = new SpeechRecognition();
-  voiceRecognition.lang = "fr-FR";
-  voiceRecognition.interimResults = true;
-  voiceRecognition.maxAlternatives = 1;
-  voiceRecognition.continuous = true;
-  state.voiceEntry = { ...state.voiceEntry, holeNumber, transcript: "", parsed: null, flashedCells: [], recording: true, status: "Enregistrement en cours... relâche pour analyser." };
-  saveLocalOnly();
-  voiceRecognition.onresult = (event) => {
-    let transcript = "";
-    for (let index = 0; index < event.results.length; index += 1) {
-      transcript += ` ${event.results[index]?.[0]?.transcript || ""}`;
-    }
-    if (voicePending) voicePending.transcript = transcript.trim();
-    if (!voicePressActive) finishVoiceHold();
-  };
-  voiceRecognition.onerror = () => {
-    voicePressActive = false;
-    if (voicePending) voicePending.processed = true;
-    voicePending = null;
-    state.voiceEntry = { ...state.voiceEntry, recording: false, status: "Je n'ai pas bien entendu. Réessaie avec le bouton rouge." };
-    saveLocalOnly();
-    renderPreservingPosition();
-  };
-  voiceRecognition.onend = () => {
-    if (!voicePressActive) finishVoiceHold();
-  };
-  voiceRecognition.start();
-}
-
-function toggleVoiceRecording(roundId, holeNumber) {
-  if (state.voiceEntry?.recording || voicePressActive) {
-    stopVoiceRecording();
-  } else {
-    startVoiceRecording(roundId, holeNumber);
-  }
 }
 
 function renderPlayers() {
@@ -2972,13 +2718,6 @@ function bindEvents() {
 
   document.querySelectorAll("[data-keypad-clear]").forEach((button) => {
     button.addEventListener("click", clearActiveScore);
-  });
-
-  document.querySelectorAll("[data-voice-toggle]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const [roundId, hole] = button.dataset.voiceToggle.split(":");
-      toggleVoiceRecording(roundId, Number(hole));
-    });
   });
 
   document.querySelectorAll("[data-mobile-hole-prev]").forEach((button) => {
