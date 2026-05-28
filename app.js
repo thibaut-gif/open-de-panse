@@ -215,6 +215,7 @@ function createInitialState() {
     activeScoreCell: null,
     activeMobileHole: 1,
     playerStatsScope: {},
+    scoreboardScope: "total",
     seenNotificationCount: 0,
     showPositionRace: false,
     anonymizeParticipantLeaderboards: true,
@@ -292,6 +293,7 @@ function applyRemoteState(data) {
     activeScoreCell: state.activeScoreCell,
     activeMobileHole: state.activeMobileHole,
     playerStatsScope: state.playerStatsScope,
+    scoreboardScope: state.scoreboardScope,
     showPositionRace: state.showPositionRace,
     seenNotificationCount: state.seenNotificationCount,
   };
@@ -1105,13 +1107,13 @@ function renderHome() {
         <div class="panel-header">
           <div>
             <h3 class="panel-title">Classement cumulé</h3>
-            <p class="panel-subtitle">Toucher pour ouvrir le leaderboard Milano 2026</p>
+            <p class="panel-subtitle">Toucher pour ouvrir le tableau des scores Milano 2026</p>
           </div>
         </div>
         <div class="panel-body">${renderHomeRankingSnapshot(cumulative)}</div>
       </button>
     </div>
-    ${renderAugustaLeaderboard()}
+    ${renderMilanoScoreboard()}
     <div class="panel" style="margin-top:14px">
       <div class="panel-header">
         <div>
@@ -1137,59 +1139,70 @@ function renderHome() {
   `;
 }
 
-function augustaRows() {
-  const rounds = augustaRounds();
+function latestScoredRoundId() {
+  const playedRounds = [...state.rounds].reverse().find((round) => state.players.some((player) => playerRoundStats(player, round.id).holesPlayed));
+  return playedRounds?.id || state.selectedRoundId || state.rounds[0].id;
+}
+
+function scoreboardRoundId() {
+  const scope = state.scoreboardScope || "total";
+  return scope === "total" ? latestScoredRoundId() : scope;
+}
+
+function scoreboardRows() {
+  const scope = state.scoreboardScope || "total";
+  const roundId = scoreboardRoundId();
+  const course = courseForRound(roundId);
   return state.players.map((player) => {
-    const holes = Array.from({ length: 18 }, (_, index) => {
-      const holeNumber = index + 1;
-      return rounds.reduce((cell, round) => {
-        const course = courseForRound(round.id);
-        const hole = course.holes.find((item) => item.number === holeNumber);
-        const gross = getGross(round.id, player.id, holeNumber);
-        if (!hole || !gross) return cell;
-        const stats = playerRoundStats(player, round.id);
-        const strokes = strokesOnHole(stats.handicapValue, hole.strokeIndex);
-        cell.points += stablefordPoints(hole.par, gross, strokes) || 0;
-        cell.played += 1;
-        return cell;
-      }, { points: 0, played: 0 });
+    const roundStats = playerRoundStats(player, roundId);
+    const cumulative = cumulativeStats(player);
+    const holes = course.holes.map((hole) => {
+      const gross = getGross(roundId, player.id, hole.number);
+      return { gross };
     });
-    const total = holes.reduce((sum, value) => sum + value.points, 0);
-    return { player, holes, total };
-  }).sort((a, b) => b.total - a.total);
+    return {
+      player,
+      holes,
+      grossTotal: roundStats.grossTotal,
+      points: scope === "total" ? cumulative.points : roundStats.points,
+      holesPlayed: scope === "total" ? cumulative.holesPlayed : roundStats.holesPlayed,
+    };
+  }).sort((a, b) => b.points - a.points || b.holesPlayed - a.holesPlayed || a.grossTotal - b.grossTotal);
 }
 
-function augustaCellClass(cell) {
-  if (!cell.played) return "";
-  if (cell.points >= 4) return "augusta-excellent";
-  if (cell.points === 3) return "augusta-good";
-  if (cell.points === 2) return "augusta-par";
-  if (cell.points === 1) return "augusta-low";
-  return "augusta-zero";
-}
-
-function renderAugustaLeaderboard() {
-  const rows = augustaRows();
-  const round = selectedRound() || state.rounds[0];
+function renderMilanoScoreboard() {
+  const rows = scoreboardRows();
+  const scope = state.scoreboardScope || "total";
+  const roundId = scoreboardRoundId();
+  const round = state.rounds.find((item) => item.id === roundId);
+  const course = courseForRound(roundId);
+  const subtitle = scope === "total"
+    ? `Brut du dernier tour joué (${roundOrdinalLabel(round.number).toLowerCase()} tour) · points Stableford cumulés`
+    : `Tour ${round.number} · ${course.name} · brut par trou et points Stableford du tour`;
   return `
-    <div class="panel augusta-panel">
+    <div class="panel augusta-panel milano-scoreboard">
       <div class="panel-header">
         <div class="augusta-title-lockup">
           <img class="augusta-logo" ${logoAttrs()} alt="Logo Open de Panse" />
           <div>
             <h3 class="panel-title">Leaderboard Milano 2026</h3>
-            <p class="panel-subtitle">${selectedRoundTitle()} · Points Stableford cumulés jusqu'au tour ${round.number}</p>
+            <p class="panel-subtitle">${subtitle}</p>
           </div>
         </div>
+        <select data-action="select-scoreboard-scope">
+          <option value="total" ${scope === "total" ? "selected" : ""}>Total</option>
+          ${state.rounds.map((item) => `<option value="${item.id}" ${scope === item.id ? "selected" : ""}>Tour ${item.number}</option>`).join("")}
+        </select>
       </div>
       <div class="augusta-scroll">
-        <table class="augusta-table">
+        <table class="augusta-table milano-scoreboard-table">
           <thead>
             <tr>
               <th>Pos</th>
               <th>Joueur</th>
-              ${Array.from({ length: 18 }, (_, index) => `<th>${index + 1}</th>`).join("")}
-              <th>Total</th>
+              ${course.holes.map((hole) => `<th>${hole.number}</th>`).join("")}
+              <th>Brut</th>
+              <th>Pts</th>
             </tr>
           </thead>
           <tbody>
@@ -1197,8 +1210,9 @@ function renderAugustaLeaderboard() {
               <tr>
                 <td>${index + 1}</td>
                 <td>${displayPlayerName(row.player, index + 1)}</td>
-                ${row.holes.map((cell) => `<td class="${augustaCellClass(cell)}">${cell.played ? cell.points : ""}</td>`).join("")}
-                <td><strong>${row.total}</strong></td>
+                ${row.holes.map((cell) => `<td>${cell.gross || ""}</td>`).join("")}
+                <td><strong>${row.grossTotal || ""}</strong></td>
+                <td><strong>${row.points || ""}</strong></td>
               </tr>
             `).join("")}
           </tbody>
@@ -1321,12 +1335,12 @@ function renderAugustaFullscreen() {
           <img class="augusta-logo" ${logoAttrs()} alt="Logo Open de Panse" />
           <div>
             <h1>Leaderboard Milano 2026</h1>
-            <p>${selectedRoundTitle()} · points Stableford cumulés en live</p>
+            <p>Scores bruts par trou et points Stableford</p>
           </div>
         </div>
         <button class="btn" data-action="close-augusta">Retour</button>
       </div>
-      ${renderAugustaLeaderboard()}
+      ${renderMilanoScoreboard()}
     </div>
   `;
 }
@@ -1370,16 +1384,17 @@ function renderPalmaresMetric(type) {
   const title = isGreen ? `Veste verte ${latest.year}` : `Cuillère de bois ${latest.year}`;
   const name = isGreen ? latest.greenJacket : latest.woodenSpoon;
   return `
-    <details class="metric heritage-metric ${isGreen ? "green" : "wood"}">
+    <details class="metric heritage-metric ${isGreen ? "green" : "wood"}" data-palmares-metric>
       <summary>
         <span>${title}</span>
         <strong>${name}</strong>
       </summary>
-      <div class="heritage-list">
+      <div class="heritage-list heritage-list-paired">
         ${[...rows].reverse().map((row) => `
           <div>
             <span>${row.year}</span>
-            <strong>${isGreen ? row.greenJacket : row.woodenSpoon}</strong>
+            <strong>${row.greenJacket}</strong>
+            <strong>${row.woodenSpoon}</strong>
           </div>
         `).join("")}
       </div>
@@ -2676,6 +2691,22 @@ function bindEvents() {
       state.activeMobileHole = 1;
       saveState();
       render();
+    });
+  });
+
+  document.querySelectorAll('[data-action="select-scoreboard-scope"]').forEach((select) => {
+    select.addEventListener("change", () => {
+      state.scoreboardScope = select.value;
+      saveLocalOnly();
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-palmares-metric]").forEach((details) => {
+    details.addEventListener("toggle", () => {
+      document.querySelectorAll("[data-palmares-metric]").forEach((item) => {
+        if (item !== details) item.open = details.open;
+      });
     });
   });
 

@@ -362,6 +362,10 @@ button {
   font-size: 12px;
 }
 
+.heritage-list-paired div {
+  grid-template-columns: 44px 1fr 1fr;
+}
+
 .heritage-list span {
   color: var(--muted);
   font-weight: 900;
@@ -660,6 +664,24 @@ button {
   font-size: 12px;
   border: 6px solid #d8d0aa;
   box-shadow: inset 0 0 0 2px #23472f;
+}
+
+.milano-scoreboard .panel-header {
+  align-items: center;
+}
+
+.milano-scoreboard .panel-header select {
+  min-width: 120px;
+}
+
+.milano-scoreboard-table td:last-child,
+.milano-scoreboard-table th:last-child {
+  background: #e9f4ee;
+}
+
+.milano-scoreboard-table td:nth-last-child(2),
+.milano-scoreboard-table th:nth-last-child(2) {
+  background: #f7edd0;
 }
 
 .augusta-table th,
