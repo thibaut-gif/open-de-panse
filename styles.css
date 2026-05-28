@@ -482,7 +482,7 @@ button {
 
 .underground-rank {
   display: grid;
-  grid-template-columns: 38px 1fr auto;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   padding: 10px;
@@ -495,6 +495,45 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.underground-rank .small {
+  grid-column: 2 / -1;
+}
+
+.stat-bar {
+  grid-column: 2 / -1;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dfe8e1;
+}
+
+.stat-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), var(--gold));
+}
+
+.underground-details {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.underground-details summary {
+  min-height: 40px;
+  padding: 10px 12px;
+  color: var(--green);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.underground-full-list {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
 }
 
 .rank {
@@ -676,7 +715,6 @@ button {
   display: grid;
   gap: 4px;
   justify-self: start;
-  min-width: 120px;
   order: -1;
 }
 
@@ -687,8 +725,18 @@ button {
   text-transform: uppercase;
 }
 
-.scoreboard-scope-control select {
-  min-width: 120px;
+.scoreboard-scope-control select,
+.compact-field select {
+  min-height: 36px;
+  border: 1px solid #23472f;
+  border-radius: 6px;
+  background: white;
+  color: #1b1f1c;
+  font-weight: 850;
+}
+
+.compact-field {
+  max-width: 280px;
 }
 
 .milano-scoreboard-table td:last-child,

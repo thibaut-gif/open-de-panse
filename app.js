@@ -216,6 +216,7 @@ function createInitialState() {
     activeMobileHole: 1,
     playerStatsScope: {},
     scoreboardScope: "total",
+    puttingStatsScope: "total",
     seenNotificationCount: 0,
     showPositionRace: false,
     anonymizeParticipantLeaderboards: true,
@@ -294,6 +295,7 @@ function applyRemoteState(data) {
     activeMobileHole: state.activeMobileHole,
     playerStatsScope: state.playerStatsScope,
     scoreboardScope: state.scoreboardScope,
+    puttingStatsScope: state.puttingStatsScope,
     showPositionRace: state.showPositionRace,
     seenNotificationCount: state.seenNotificationCount,
   };
@@ -789,13 +791,6 @@ function sortedGrossRows() {
   ));
 }
 
-function topSouterrainesRows(key) {
-  return souterrainesRows()
-    .filter((row) => row.stats[key] > 0)
-    .sort((a, b) => b.stats[key] - a.stats[key] || a.stats.relative - b.stats.relative)
-    .slice(0, 3);
-}
-
 function formatRelative(value) {
   if (!value) return "E";
   return value > 0 ? `+${value}` : String(value);
@@ -1052,7 +1047,7 @@ function renderTabs() {
     ["score", "Scores", icons.pencil],
     ["groups", "Parties", icons.groups],
     ["players", "Joueurs", icons.users],
-    ["underground", "Souterraines", icons.trophy],
+    ["underground", "Statistiques", icons.trophy],
     ["notifications", "Alertes", icons.bell],
   ];
   const unreadAlerts = Math.max(0, state.notifications.length - (state.seenNotificationCount || 0));
@@ -1576,8 +1571,8 @@ function renderUnderground() {
     <div class="panel">
       <div class="panel-header">
         <div>
-          <h3 class="panel-title">Souterraines</h3>
-          <p class="panel-subtitle">Classements bruts et statistiques de coups sur tous les tours</p>
+          <h3 class="panel-title">Statistiques</h3>
+          <p class="panel-subtitle">Classements bruts, coups marquants et putting</p>
         </div>
       </div>
       <div class="panel-body">
@@ -1585,36 +1580,95 @@ function renderUnderground() {
       </div>
     </div>
     <div class="underground-grid">
-      ${topBlocks.map(([key, label]) => renderUndergroundTop(key, label)).join("")}
+      ${topBlocks.map(([key, label]) => renderUndergroundStat(key, label)).join("")}
       ${renderPuttingUnderground()}
     </div>
   `;
 }
 
 function renderPuttingUnderground() {
+  const scope = state.puttingStatsScope || "total";
+  const isTotal = scope === "total";
+  const round = state.rounds.find((item) => item.id === scope);
   const rows = state.players
-    .map((player) => ({ player, stats: grossSouterrainesStats(player) }))
-    .filter((row) => row.stats.puttHoles > 0)
-    .sort((a, b) => a.stats.puttsAverage - b.stats.puttsAverage || b.stats.onePutts - a.stats.onePutts)
-    .slice(0, 3);
+    .map((player) => ({ player, stats: grossSouterrainesStats(player, isTotal ? null : [scope]) }))
+    .sort((a, b) => {
+      const aHas = a.stats.puttHoles > 0 ? 1 : 0;
+      const bHas = b.stats.puttHoles > 0 ? 1 : 0;
+      return bHas - aHas || a.stats.puttsTotal - b.stats.puttsTotal || b.stats.threePutts - a.stats.threePutts;
+    });
+  const maxPutts = Math.max(1, ...rows.map((row) => row.stats.puttsTotal));
+  const topRows = rows.filter((row) => row.stats.puttHoles > 0).slice(0, 3);
+  const label = isTotal ? "Total compétition" : `Tour ${round?.number || ""} - ${round ? courseName(round.courseId) : ""}`;
 
   return `
     <div class="panel underground-card">
       <div class="panel-header">
         <div>
           <h3 class="panel-title">Putting</h3>
-          <p class="panel-subtitle">Top 3 moyenne de putts</p>
+          <p class="panel-subtitle">${label} · nombre total de putts</p>
         </div>
       </div>
       <div class="panel-body cards">
-        ${rows.length ? rows.map((row, index) => `
-          <div class="underground-rank">
-            <span class="rank">#${index + 1}</span>
-            <strong>${displayPlayerName(row.player, index + 1)}</strong>
-            <span class="score-big">${row.stats.puttsAverage.toFixed(1)}</span>
-            <span class="small">${row.stats.puttsTotal} putts · ${row.stats.threePutts} fois 3+</span>
+        <div class="field compact-field">
+          <label>Tour</label>
+          <select data-action="select-putting-scope">
+            <option value="total" ${isTotal ? "selected" : ""}>Total compétition</option>
+            ${state.rounds.map((item) => `<option value="${item.id}" ${scope === item.id ? "selected" : ""}>Tour ${item.number} - ${courseName(item.courseId)}</option>`).join("")}
+          </select>
+        </div>
+        ${topRows.length ? renderUndergroundRows(topRows, "puttsTotal", maxPutts, { suffix: " putts" }) : `<div class="empty">Les stats putting apparaîtront dès que les putts seront saisis.</div>`}
+        <details class="underground-details">
+          <summary>Voir tous les joueurs</summary>
+          <div class="underground-full-list">
+            ${renderUndergroundRows(rows, "puttsTotal", maxPutts, { suffix: " putts", showEmpty: true, subKey: "threePutts", subLabel: "3 putts +" })}
           </div>
-        `).join("") : `<div class="empty">Les stats putting apparaîtront dès que les putts seront saisis.</div>`}
+        </details>
+      </div>
+    </div>
+  `;
+}
+
+function renderUndergroundRows(rows, key, maxValue, options = {}) {
+  const { suffix = "", showEmpty = false, subKey = "", subLabel = "" } = options;
+  const filteredRows = showEmpty ? rows : rows.filter((row) => row.stats[key] > 0);
+  return filteredRows.map((row, index) => {
+    const value = row.stats[key] || 0;
+    const width = value ? Math.max(8, Math.round((value / Math.max(1, maxValue)) * 100)) : 0;
+    return `
+      <div class="underground-rank">
+        <span class="rank">#${index + 1}</span>
+        <strong>${displayPlayerName(row.player, index + 1)}</strong>
+        <span class="score-big">${value || "-"}</span>
+        <div class="stat-bar"><span style="width:${width}%"></span></div>
+        ${subKey ? `<span class="small">${subLabel} ${row.stats[subKey] || 0}${suffix && value ? ` · ${value}${suffix}` : ""}</span>` : ""}
+      </div>
+    `;
+  }).join("");
+}
+
+function renderUndergroundStat(key, label) {
+  const rows = state.players
+    .map((player) => ({ player, stats: grossSouterrainesStats(player) }))
+    .sort((a, b) => b.stats[key] - a.stats[key] || a.stats.relative - b.stats.relative);
+  const maxValue = Math.max(1, ...rows.map((row) => row.stats[key]));
+  const topRows = rows.filter((row) => row.stats[key] > 0).slice(0, 3);
+  return `
+    <div class="panel underground-card">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">${label}</h3>
+          <p class="panel-subtitle">Top 3 cumulé · cliquer pour le classement complet</p>
+        </div>
+      </div>
+      <div class="panel-body cards">
+        ${topRows.length ? renderUndergroundRows(topRows, key, maxValue) : `<div class="empty">Aucun score pour l'instant.</div>`}
+        <details class="underground-details">
+          <summary>Voir tous les joueurs</summary>
+          <div class="underground-full-list">
+            ${renderUndergroundRows(rows, key, maxValue, { showEmpty: true })}
+          </div>
+        </details>
       </div>
     </div>
   `;
@@ -1637,29 +1691,6 @@ function renderGrossLeaderboard() {
         `).join("")}
       </tbody>
     </table>
-  `;
-}
-
-function renderUndergroundTop(key, label) {
-  const rows = topSouterrainesRows(key);
-  return `
-    <div class="panel underground-card">
-      <div class="panel-header">
-        <div>
-          <h3 class="panel-title">${label}</h3>
-          <p class="panel-subtitle">Top 3 cumulé</p>
-        </div>
-      </div>
-      <div class="panel-body cards">
-        ${rows.length ? rows.map((row, index) => `
-          <div class="underground-rank">
-            <span class="rank">#${index + 1}</span>
-            <strong>${displayPlayerName(row.player, index + 1)}</strong>
-            <span class="score-big">${row.stats[key]}</span>
-          </div>
-        `).join("") : `<div class="empty">Aucun score pour l'instant.</div>`}
-      </div>
-    </div>
   `;
 }
 
@@ -2698,8 +2729,17 @@ function bindEvents() {
   });
 
   document.querySelectorAll('[data-action="select-scoreboard-scope"]').forEach((select) => {
-    select.addEventListener("change", () => {
+    select.addEventListener("change", (event) => {
+      event.stopPropagation();
       state.scoreboardScope = select.value;
+      saveLocalOnly();
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-action="select-putting-scope"]').forEach((select) => {
+    select.addEventListener("change", () => {
+      state.puttingStatsScope = select.value;
       saveLocalOnly();
       render();
     });
