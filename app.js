@@ -217,6 +217,8 @@ function createInitialState() {
     playerStatsScope: {},
     scoreboardScope: "total",
     puttingStatsScope: "total",
+    expandedStatCards: {},
+    isPuttingStatsExpanded: false,
     seenNotificationCount: 0,
     showPositionRace: false,
     anonymizeParticipantLeaderboards: true,
@@ -296,6 +298,8 @@ function applyRemoteState(data) {
     playerStatsScope: state.playerStatsScope,
     scoreboardScope: state.scoreboardScope,
     puttingStatsScope: state.puttingStatsScope,
+    expandedStatCards: state.expandedStatCards,
+    isPuttingStatsExpanded: state.isPuttingStatsExpanded,
     showPositionRace: state.showPositionRace,
     seenNotificationCount: state.seenNotificationCount,
   };
@@ -1589,6 +1593,7 @@ function renderUnderground() {
 function renderPuttingUnderground() {
   const scope = state.puttingStatsScope || "total";
   const isTotal = scope === "total";
+  const isExpanded = Boolean(state.isPuttingStatsExpanded);
   const round = state.rounds.find((item) => item.id === scope);
   const rows = state.players
     .map((player) => ({ player, stats: grossSouterrainesStats(player, isTotal ? null : [scope]) }))
@@ -1599,14 +1604,15 @@ function renderPuttingUnderground() {
     });
   const maxPutts = Math.max(1, ...rows.map((row) => row.stats.puttsTotal));
   const topRows = rows.filter((row) => row.stats.puttHoles > 0).slice(0, 3);
+  const visibleRows = isExpanded ? rows : topRows;
   const label = isTotal ? "Total compétition" : `Tour ${round?.number || ""} - ${round ? courseName(round.courseId) : ""}`;
 
   return `
-    <div class="panel underground-card">
+    <div class="panel underground-card stat-toggle-card ${isExpanded ? "expanded" : ""}" data-toggle-putting-stats role="button" tabindex="0">
       <div class="panel-header">
         <div>
           <h3 class="panel-title">Putting</h3>
-          <p class="panel-subtitle">${label} · nombre total de putts</p>
+          <p class="panel-subtitle">${label} · ${isExpanded ? "classement complet" : "top 3"} · cliquer pour ${isExpanded ? "réduire" : "tout afficher"}</p>
         </div>
       </div>
       <div class="panel-body cards">
@@ -1617,13 +1623,7 @@ function renderPuttingUnderground() {
             ${state.rounds.map((item) => `<option value="${item.id}" ${scope === item.id ? "selected" : ""}>Tour ${item.number} - ${courseName(item.courseId)}</option>`).join("")}
           </select>
         </div>
-        ${topRows.length ? renderUndergroundRows(topRows, "puttsTotal", maxPutts, { suffix: " putts" }) : `<div class="empty">Les stats putting apparaîtront dès que les putts seront saisis.</div>`}
-        <details class="underground-details">
-          <summary>Voir tous les joueurs</summary>
-          <div class="underground-full-list">
-            ${renderUndergroundRows(rows, "puttsTotal", maxPutts, { suffix: " putts", showEmpty: true, subKey: "threePutts", subLabel: "3 putts +" })}
-          </div>
-        </details>
+        ${visibleRows.length ? renderUndergroundRows(visibleRows, "puttsTotal", maxPutts, { suffix: " putts", showEmpty: isExpanded, subKey: "threePutts", subLabel: "3 putts +" }) : `<div class="empty">Les stats putting apparaîtront dès que les putts seront saisis.</div>`}
       </div>
     </div>
   `;
@@ -1648,27 +1648,23 @@ function renderUndergroundRows(rows, key, maxValue, options = {}) {
 }
 
 function renderUndergroundStat(key, label) {
+  const isExpanded = Boolean(state.expandedStatCards?.[key]);
   const rows = state.players
     .map((player) => ({ player, stats: grossSouterrainesStats(player) }))
     .sort((a, b) => b.stats[key] - a.stats[key] || a.stats.relative - b.stats.relative);
   const maxValue = Math.max(1, ...rows.map((row) => row.stats[key]));
   const topRows = rows.filter((row) => row.stats[key] > 0).slice(0, 3);
+  const visibleRows = isExpanded ? rows : topRows;
   return `
-    <div class="panel underground-card">
+    <div class="panel underground-card stat-toggle-card ${isExpanded ? "expanded" : ""}" data-toggle-stat-card="${key}" role="button" tabindex="0">
       <div class="panel-header">
         <div>
           <h3 class="panel-title">${label}</h3>
-          <p class="panel-subtitle">Top 3 cumulé · cliquer pour le classement complet</p>
+          <p class="panel-subtitle">${isExpanded ? "Classement complet" : "Top 3 cumulé"} · cliquer pour ${isExpanded ? "réduire" : "tout afficher"}</p>
         </div>
       </div>
       <div class="panel-body cards">
-        ${topRows.length ? renderUndergroundRows(topRows, key, maxValue) : `<div class="empty">Aucun score pour l'instant.</div>`}
-        <details class="underground-details">
-          <summary>Voir tous les joueurs</summary>
-          <div class="underground-full-list">
-            ${renderUndergroundRows(rows, key, maxValue, { showEmpty: true })}
-          </div>
-        </details>
+        ${visibleRows.length ? renderUndergroundRows(visibleRows, key, maxValue, { showEmpty: isExpanded }) : `<div class="empty">Aucun score pour l'instant.</div>`}
       </div>
     </div>
   `;
@@ -2742,6 +2738,40 @@ function bindEvents() {
       state.puttingStatsScope = select.value;
       saveLocalOnly();
       render();
+    });
+    select.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+  });
+
+  document.querySelectorAll("[data-toggle-stat-card]").forEach((card) => {
+    const toggle = () => {
+      if (!state.expandedStatCards) state.expandedStatCards = {};
+      const key = card.dataset.toggleStatCard;
+      state.expandedStatCards[key] = !state.expandedStatCards[key];
+      saveLocalOnly();
+      render();
+    };
+    card.addEventListener("click", toggle);
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      toggle();
+    });
+  });
+
+  document.querySelectorAll("[data-toggle-putting-stats]").forEach((card) => {
+    const toggle = (event) => {
+      if (event?.target?.closest('[data-action="select-putting-scope"]')) return;
+      state.isPuttingStatsExpanded = !state.isPuttingStatsExpanded;
+      saveLocalOnly();
+      render();
+    };
+    card.addEventListener("click", toggle);
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      toggle(event);
     });
   });
 
