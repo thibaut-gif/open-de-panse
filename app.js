@@ -1158,7 +1158,7 @@ function scoreboardRows() {
     const cumulative = cumulativeStats(player);
     const holes = course.holes.map((hole) => {
       const gross = getGross(roundId, player.id, hole.number);
-      return { gross };
+      return { hole, gross };
     });
     return {
       player,
@@ -1189,10 +1189,13 @@ function renderMilanoScoreboard() {
             <p class="panel-subtitle">${subtitle}</p>
           </div>
         </div>
-        <select data-action="select-scoreboard-scope">
-          <option value="total" ${scope === "total" ? "selected" : ""}>Total</option>
-          ${state.rounds.map((item) => `<option value="${item.id}" ${scope === item.id ? "selected" : ""}>Tour ${item.number}</option>`).join("")}
-        </select>
+        <div class="scoreboard-scope-control">
+          <label>Tour</label>
+          <select data-action="select-scoreboard-scope">
+            <option value="total" ${scope === "total" ? "selected" : ""}>Total</option>
+            ${state.rounds.map((item) => `<option value="${item.id}" ${scope === item.id ? "selected" : ""}>Tour ${item.number}</option>`).join("")}
+          </select>
+        </div>
       </div>
       <div class="augusta-scroll">
         <table class="augusta-table milano-scoreboard-table">
@@ -1210,7 +1213,7 @@ function renderMilanoScoreboard() {
               <tr>
                 <td>${index + 1}</td>
                 <td>${displayPlayerName(row.player, index + 1)}</td>
-                ${row.holes.map((cell) => `<td>${cell.gross || ""}</td>`).join("")}
+                ${row.holes.map((cell) => `<td>${renderScoreMark(cell)}</td>`).join("")}
                 <td><strong>${row.grossTotal || ""}</strong></td>
                 <td><strong>${row.points || ""}</strong></td>
               </tr>
@@ -1329,7 +1332,7 @@ function renderPositionRaceChart() {
 
 function renderAugustaFullscreen() {
   return `
-    <div class="augusta-fullscreen" data-action="close-augusta">
+    <div class="augusta-fullscreen">
       <div class="augusta-fullscreen-header">
         <div class="augusta-title-lockup">
           <img class="augusta-logo" ${logoAttrs()} alt="Logo Open de Panse" />

@@ -667,10 +667,27 @@ button {
 }
 
 .milano-scoreboard .panel-header {
+  grid-template-columns: auto 1fr;
   align-items: center;
+  justify-content: start;
 }
 
-.milano-scoreboard .panel-header select {
+.scoreboard-scope-control {
+  display: grid;
+  gap: 4px;
+  justify-self: start;
+  min-width: 120px;
+  order: -1;
+}
+
+.scoreboard-scope-control label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.scoreboard-scope-control select {
   min-width: 120px;
 }
 
