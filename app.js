@@ -462,12 +462,17 @@ function strokesOnHole(courseHandicapValue, strokeIndex) {
 
 function stablefordPoints(par, gross, strokes) {
   if (!gross || gross < 1) return null;
+  if (isAbandonedScore(gross)) return 0;
   const net = gross - strokes;
   return Math.max(0, 2 + par - net);
 }
 
+function isAbandonedScore(gross) {
+  return String(gross).toUpperCase() === "X";
+}
+
 function roundHandicapDown(value) {
-  return Math.floor(value * 10) / 10;
+  return Math.floor(value);
 }
 
 function handicapAfterStableford(handicap, points) {
@@ -477,6 +482,7 @@ function handicapAfterStableford(handicap, points) {
 }
 
 function underParType(par, gross) {
+  if (isAbandonedScore(gross)) return null;
   if (!gross || gross >= par) return null;
   const diff = par - gross;
   if (diff === 1) return "birdie";
@@ -486,18 +492,20 @@ function underParType(par, gross) {
 }
 
 function getGross(roundId, playerId, holeNumber) {
-  return state.scores[roundScoreKey(roundId, playerId, holeNumber)] || "";
+  const value = state.scores[roundScoreKey(roundId, playerId, holeNumber)];
+  return value === undefined || value === null ? "" : value;
 }
 
 function getPutts(roundId, playerId, holeNumber) {
-  return state.putts?.[puttKey(roundId, playerId, holeNumber)] || "";
+  const value = state.putts?.[puttKey(roundId, playerId, holeNumber)];
+  return value === undefined || value === null ? "" : value;
 }
 
 function setPutts(roundId, playerId, holeNumber, value) {
   if (!state.putts) state.putts = {};
   const key = puttKey(roundId, playerId, holeNumber);
   const nextValue = Number(value);
-  if (!value || Number.isNaN(nextValue) || nextValue < 0) {
+  if (value === "" || value === null || value === undefined || Number.isNaN(nextValue) || nextValue < 0) {
     delete state.putts[key];
   } else {
     state.putts[key] = nextValue;
@@ -515,6 +523,17 @@ function isHoleValidated(roundId, groupId, holeNumber) {
 
 function setGross(roundId, playerId, holeNumber, value, options = {}) {
   const key = roundScoreKey(roundId, playerId, holeNumber);
+  if (String(value).toUpperCase() === "X") {
+    state.scores[key] = "X";
+    if (options.localOnly) {
+      saveLocalOnly();
+      scheduleRemoteSave();
+    } else {
+      saveState();
+      if (!options.keepFocus) render();
+    }
+    return;
+  }
   const nextValue = Number(value);
   if (!value || Number.isNaN(nextValue) || nextValue < 1) {
     delete state.scores[key];
@@ -607,9 +626,42 @@ function keypadScore(value) {
     saveLocalOnly();
     scheduleRemoteSave();
   } else {
+    if (String(value) === "0") return;
     setGross(active.roundId, active.playerId, active.holeNumber, value, { localOnly: true });
   }
   advanceActiveScoreCell();
+}
+
+function abandonActiveHole() {
+  const active = state.activeScoreCell;
+  if (!active) return;
+  setGross(active.roundId, active.playerId, active.holeNumber, "X", { localOnly: true });
+  if (!state.putts) state.putts = {};
+  delete state.putts[puttKey(active.roundId, active.playerId, active.holeNumber)];
+  const players = activeGroupPlayers();
+  const currentIndex = players.findIndex((player) => player.id === active.playerId);
+  const course = courseForRound(active.roundId);
+  if (currentIndex >= 0 && currentIndex < players.length - 1) {
+    state.activeScoreCell = {
+      roundId: active.roundId,
+      playerId: players[currentIndex + 1].id,
+      holeNumber: active.holeNumber,
+      kind: "score",
+    };
+  } else {
+    autoValidateHole(active.roundId, state.selectedGroupId, active.holeNumber);
+    const nextHole = course.holes.find((hole) => hole.number > active.holeNumber);
+    state.activeScoreCell = nextHole && players[0] ? {
+      roundId: active.roundId,
+      playerId: players[0].id,
+      holeNumber: nextHole.number,
+      kind: "score",
+    } : null;
+    if (nextHole) state.activeMobileHole = nextHole.number;
+  }
+  saveLocalOnly();
+  scheduleRemoteSave();
+  renderPreservingPosition();
 }
 
 function clearActiveScore() {
@@ -697,9 +749,10 @@ function playerRoundStatsFromHandicap(player, roundId, handicap) {
     const strokes = strokesOnHole(handicapValue, hole.strokeIndex);
     const holePoints = stablefordPoints(hole.par, gross, strokes);
     points += holePoints;
+    holesPlayed += 1;
+    if (isAbandonedScore(gross)) return;
     grossTotal += gross;
     relative += gross - hole.par;
-    holesPlayed += 1;
     if (underParType(hole.par, gross)) underPar += 1;
   });
 
@@ -756,18 +809,20 @@ function grossSouterrainesStats(player, roundIds = null) {
     const course = courseForRound(round.id);
     course.holes.forEach((hole) => {
       const gross = getGross(round.id, player.id, hole.number);
-      const putts = Number(getPutts(round.id, player.id, hole.number));
-      if (putts > 0) {
+      const puttValue = getPutts(round.id, player.id, hole.number);
+      const putts = Number(puttValue);
+      if (puttValue !== "" && !Number.isNaN(putts) && putts >= 0) {
         stats.puttsTotal += putts;
         stats.puttHoles += 1;
         if (putts === 1) stats.onePutts += 1;
         if (putts >= 3) stats.threePutts += 1;
       }
       if (!gross) return;
+      stats.holesPlayed += 1;
+      if (isAbandonedScore(gross)) return;
       const diff = gross - hole.par;
       stats.grossTotal += gross;
       stats.relative += diff;
-      stats.holesPlayed += 1;
       if (diff === -1) stats.birdies += 1;
       if (diff === 0) stats.pars += 1;
       if (diff === 1) stats.bogeys += 1;
@@ -1911,9 +1966,10 @@ function importScoreCsv(text) {
 
     for (let holeNumber = 1; holeNumber <= 18; holeNumber += 1) {
       const scoreIndex = indexOf(`Trou ${holeNumber}`);
-      const value = Number(row[scoreIndex]);
-      if (scoreIndex < 0 || Number.isNaN(value) || value < 1) continue;
-      state.scores[roundScoreKey(round.id, player.id, holeNumber)] = value;
+      const rawValue = scoreIndex >= 0 ? String(row[scoreIndex] || "").trim() : "";
+      const value = Number(rawValue);
+      if (scoreIndex < 0 || (!isAbandonedScore(rawValue) && (Number.isNaN(value) || value < 1))) continue;
+      state.scores[roundScoreKey(round.id, player.id, holeNumber)] = isAbandonedScore(rawValue) ? "X" : value;
       importedScores += 1;
     }
     state.selectedRoundId = round.id;
@@ -2000,8 +2056,8 @@ function exportScoresCsv() {
             hole.par,
             hole.strokeIndex,
             strokes,
-            gross || "",
-            putts || "",
+            gross === "" ? "" : gross,
+            putts === "" ? "" : putts,
             points ?? "",
             isHoleValidated(round.id, group.id, hole.number) ? "oui" : "non",
             state.validatedRounds?.[round.id] ? "oui" : "non",
@@ -2119,13 +2175,13 @@ function renderGroupScoreGrid(roundId, course, players) {
                 return `
                   <td class="${type ? "under-par-cell" : ""} ${activeScore ? "active-score-cell" : ""}">
                     <button class="grid-score-button" data-score-cell="${roundId}:${player.id}:${hole.number}:score" aria-label="${player.name} score trou ${hole.number}">
-                      ${gross || ""}
+                      ${gross === "" ? "" : gross}
                     </button>
                     <small>${points ?? "-"} pt${points > 1 ? "s" : ""} · ${strokes >= 0 ? "+" : ""}${strokes}</small>
                   </td>
                   <td class="${activePutt ? "active-score-cell" : ""}">
                     <button class="grid-score-button putt-button" data-score-cell="${roundId}:${player.id}:${hole.number}:putt" aria-label="${player.name} putts trou ${hole.number}">
-                      ${putts || ""}
+                      ${putts === "" ? "" : putts}
                     </button>
                     <small>P</small>
                   </td>
@@ -2170,11 +2226,11 @@ function renderMobileHoleEntry(roundId, course, players) {
               </button>
               <button class="mobile-player-value ${activeScore ? "active" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:score">
                 <span>Score</span>
-                <b>${gross || ""}</b>
+                <b>${gross === "" ? "" : gross}</b>
               </button>
               <button class="mobile-player-value ${activePutt ? "active" : ""}" data-score-cell="${roundId}:${player.id}:${hole.number}:putt">
                 <span>P</span>
-                <b>${putts || ""}</b>
+                <b>${putts === "" ? "" : putts}</b>
               </button>
             </div>
           `;
@@ -2189,9 +2245,10 @@ function renderMobileHoleEntry(roundId, course, players) {
 function renderMobileKeypad() {
   return `
     <div class="mobile-keypad">
-      ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((value) => `
+      ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((value) => `
         <button class="keypad-key" data-keypad-score="${value}">${value}</button>
       `).join("")}
+      <button class="keypad-key danger-key" data-keypad-abandon>X</button>
       <button class="keypad-key muted" data-keypad-clear>Effacer</button>
     </div>
   `;
@@ -2209,9 +2266,10 @@ function renderFloatingKeypad() {
         <button class="btn" data-keypad-clear>Effacer</button>
       </div>
       <div class="keypad-grid">
-        ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((value) => `
+        ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((value) => `
           <button class="keypad-key" data-keypad-score="${value}">${value}</button>
         `).join("")}
+        <button class="keypad-key danger-key" data-keypad-abandon>X</button>
       </div>
     </div>
   `;
@@ -2420,7 +2478,7 @@ function renderPlayerScorecard(player, roundId) {
     const gross = getGross(roundId, player.id, hole.number);
     const strokes = strokesOnHole(stats.handicapValue, hole.strokeIndex);
     const points = stablefordPoints(hole.par, gross, strokes);
-    return { hole, gross, points };
+    return { hole, gross, points, strokes };
   });
   const parTotal = cells.reduce((sum, cell) => sum + cell.hole.par, 0);
   const grossTotal = cells.reduce((sum, cell) => sum + (Number(cell.gross) || 0), 0);
@@ -2455,6 +2513,10 @@ function renderScorecardNine(label, cells) {
           <tr>
             <td>Par</td>
             ${cells.map((cell) => `<td>${cell.hole.par}</td>`).join("")}
+          </tr>
+          <tr>
+            <td>Rendus</td>
+            ${cells.map((cell) => `<td>${cell.strokes || "-"}</td>`).join("")}
           </tr>
           <tr>
             <td>Brut</td>
@@ -2940,6 +3002,10 @@ function bindEvents() {
 
   document.querySelectorAll("[data-keypad-score]").forEach((button) => {
     button.addEventListener("click", () => keypadScore(button.dataset.keypadScore));
+  });
+
+  document.querySelectorAll("[data-keypad-abandon]").forEach((button) => {
+    button.addEventListener("click", abandonActiveHole);
   });
 
   document.querySelectorAll("[data-keypad-clear]").forEach((button) => {

@@ -1488,6 +1488,12 @@ button {
   color: var(--red);
 }
 
+.keypad-key.danger-key {
+  border-color: #e0b0b0;
+  background: #fff5f5;
+  color: var(--red);
+}
+
 .auto-save-note {
   padding: 10px;
   border: 1px solid var(--line);
@@ -1600,7 +1606,7 @@ button {
 
 .keypad-grid {
   display: grid;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(11, minmax(0, 1fr));
   gap: 8px;
 }
 
