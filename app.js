@@ -433,8 +433,7 @@ function teeForPlayer(player, course) {
 }
 
 function courseHandicap(player, course) {
-  const tee = teeForPlayer(player, course);
-  return roundHalfUp(player.handicap * tee.slope / 113 + tee.rating - tee.par);
+  return Math.max(0, roundHalfUp(Number(player.handicap) || 0));
 }
 
 function handicapBeforeRound(player, roundId) {
@@ -565,21 +564,10 @@ function advanceActiveScoreCell() {
   const currentIndex = players.findIndex((player) => player.id === active.playerId);
   const course = courseForRound(active.roundId);
   const kind = active.kind || "score";
-  if (currentIndex >= 0 && currentIndex < players.length - 1) {
+  if (kind === "score") {
     state.activeScoreCell = {
       roundId: active.roundId,
-      playerId: players[currentIndex + 1].id,
-      holeNumber: active.holeNumber,
-      kind,
-    };
-    saveLocalOnly();
-    renderPreservingPosition();
-    return;
-  }
-  if (kind === "score" && players[0]) {
-    state.activeScoreCell = {
-      roundId: active.roundId,
-      playerId: players[0].id,
+      playerId: active.playerId,
       holeNumber: active.holeNumber,
       kind: "putt",
     };
@@ -587,13 +575,18 @@ function advanceActiveScoreCell() {
     renderPreservingPosition();
     return;
   }
-  if (window.matchMedia("(max-width: 820px)").matches) {
+  if (currentIndex >= 0 && currentIndex < players.length - 1) {
+    state.activeScoreCell = {
+      roundId: active.roundId,
+      playerId: players[currentIndex + 1].id,
+      holeNumber: active.holeNumber,
+      kind: "score",
+    };
     saveLocalOnly();
     renderPreservingPosition();
     return;
   }
-  const validate = document.querySelector(`[data-grid-validate="${active.holeNumber}"]`);
-  if (validate) validate.classList.add("pulse-validate");
+  autoValidateHole(active.roundId, state.selectedGroupId, active.holeNumber);
   const nextHole = course.holes.find((hole) => hole.number > active.holeNumber);
   state.activeScoreCell = nextHole && players[0] ? {
     roundId: active.roundId,
@@ -602,6 +595,7 @@ function advanceActiveScoreCell() {
     kind: "score",
   } : null;
   saveLocalOnly();
+  scheduleRemoteSave();
   renderPreservingPosition();
 }
 
@@ -632,17 +626,23 @@ function clearActiveScore() {
 }
 
 function validateHole(roundId, groupId, holeNumber) {
+  autoValidateHole(roundId, groupId, holeNumber, { force: true });
+  saveState();
+  render();
+}
+
+function autoValidateHole(roundId, groupId, holeNumber, options = {}) {
   if (!state.validatedHoles) state.validatedHoles = {};
-  state.validatedHoles[holeValidationKey(roundId, groupId, holeNumber)] = true;
   const players = groupId ? playersInGroup(roundId, groupId) : state.players;
+  if (!options.force && (!players.length || !players.every((player) => getGross(roundId, player.id, holeNumber)))) return false;
+  state.validatedHoles[holeValidationKey(roundId, groupId, holeNumber)] = true;
   const playerIds = new Set(players.map((player) => player.id));
   state.notifications = state.notifications.filter((item) => !(item.roundId === roundId && item.holeNumber === holeNumber && playerIds.has(item.playerId)));
   players.forEach((player) => {
     const gross = getGross(roundId, player.id, holeNumber);
     if (gross) maybeNotifyUnderPar(roundId, player.id, holeNumber, gross);
   });
-  saveState();
-  render();
+  return true;
 }
 
 function maybeNotifyUnderPar(roundId, playerId, holeNumber, gross) {
@@ -1707,6 +1707,7 @@ function renderScoreEntry() {
           <div class="empty">${isPlayerLogin() ? "Tu n'es pas encore affecté à une partie sur ce tour." : "Crée d'abord les parties de ce tour pour démarrer la saisie."}</div>
           <div class="actions">
             ${renderRecipeImportButton()}
+            ${renderScoreExportButton()}
             ${isPlayerLogin() ? "" : `<button class="btn primary" data-view="groups">Créer ou modifier les parties</button>`}
           </div>
         </div>
@@ -1728,12 +1729,15 @@ function renderScoreEntry() {
   const stats = playerRoundStats(player, round.id);
   return `
     <div class="panel">
-      <div class="panel-header">
-        <div>
-          <h3 class="panel-title">Saisie des scores</h3>
-          <p class="panel-subtitle">Tour ${round.number} · ${course.name}</p>
+        <div class="panel-header">
+          <div>
+            <h3 class="panel-title">Saisie des scores</h3>
+            <p class="panel-subtitle">Tour ${round.number} · ${course.name}</p>
+          </div>
+        <div class="actions panel-actions">
+          ${renderScoreExportButton()}
+          ${renderRecipeImportButton()}
         </div>
-        ${renderRecipeImportButton()}
       </div>
       <div class="panel-body">
         <div class="controls">
@@ -1762,10 +1766,12 @@ function renderScoreEntry() {
           <div class="metric"><strong>${stats.holesPlayed}/${course.holes.length}</strong><span>trous saisis</span></div>
           <div class="metric"><strong>${stats.handicapAfter ?? "-"}</strong><span>HCP après tour</span></div>
         </div>
+        ${renderGroupScoreSummary(round.id, course, groupPlayers)}
         ${renderGroupScoreGrid(round.id, course, groupPlayers)}
         <div class="actions">
           <button class="btn primary" data-action="validate-round">Valider le tour et appliquer les handicaps</button>
           <button class="btn" data-view="groups">Créer ou modifier les parties</button>
+          ${renderScoreExportButton()}
           ${renderRecipeImportButton()}
           ${isAdmin() ? `<button class="btn danger" data-action="reset-scores">Effacer les scores du prototype</button>` : ""}
         </div>
@@ -1782,6 +1788,10 @@ function renderRecipeImportButton() {
       <input class="file-input-hidden" type="file" accept=".csv,text/csv" data-import-scores />
     </label>
   `;
+}
+
+function renderScoreExportButton() {
+  return `<button class="btn" data-action="export-scores">Exporter les scores CSV</button>`;
 }
 
 function parseCsvRows(text) {
@@ -1936,6 +1946,86 @@ function importScoreCsv(text) {
   alert(`${importedScores} scores importés. ${createdNotifications} alerte(s) shot générée(s). Tour validé si les 12 cartes sont complètes, handicaps recalculés.`);
 }
 
+function csvCell(value) {
+  const text = value === null || value === undefined ? "" : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function exportScoresCsv() {
+  const headers = [
+    "Tour",
+    "Date",
+    "Parcours",
+    "Partie",
+    "Marqueur",
+    "Joueur",
+    "Handicap depart tour",
+    "Coups rendus parcours",
+    "Trou",
+    "Par",
+    "HCP trou",
+    "Coups rendus trou",
+    "Score brut",
+    "Putts",
+    "Points Stableford",
+    "Trou valide",
+    "Tour valide",
+  ];
+  const rows = [headers];
+  state.rounds.forEach((round) => {
+    const course = courseForRound(round.id);
+    const groups = groupsForRound(round.id);
+    const usedGroups = groups.length ? groups : [{ id: "", name: "", markerId: "", playerIds: state.players.map((player) => player.id) }];
+    usedGroups.forEach((group) => {
+      const players = playersInGroup(round.id, group.id).length ? playersInGroup(round.id, group.id) : state.players;
+      players.forEach((player) => {
+        const handicapBefore = handicapBeforeRound(player, round.id);
+        const stats = playerRoundStatsFromHandicap(player, round.id, handicapBefore);
+        course.holes.forEach((hole) => {
+          const gross = getGross(round.id, player.id, hole.number);
+          const putts = getPutts(round.id, player.id, hole.number);
+          if (!gross && !putts) return;
+          const strokes = strokesOnHole(stats.handicapValue, hole.strokeIndex);
+          const points = stablefordPoints(hole.par, gross, strokes);
+          rows.push([
+            round.number,
+            round.date,
+            course.name,
+            group.name || "",
+            playerName(group.markerId) || "",
+            player.name,
+            Number(handicapBefore).toFixed(1),
+            stats.handicapValue,
+            hole.number,
+            hole.par,
+            hole.strokeIndex,
+            strokes,
+            gross || "",
+            putts || "",
+            points ?? "",
+            isHoleValidated(round.id, group.id, hole.number) ? "oui" : "non",
+            state.validatedRounds?.[round.id] ? "oui" : "non",
+          ]);
+        });
+      });
+    });
+  });
+  const csv = rows.map((row) => row.map(csvCell).join(";")).join("\n");
+  downloadTextFile(`open-de-panse-scores-${new Date().toISOString().slice(0, 10)}.csv`, csv, "text/csv;charset=utf-8");
+}
+
+function downloadTextFile(filename, text, type = "text/plain;charset=utf-8") {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function renderHoleInput(roundId, player, course, hole, handicapValue) {
   const gross = getGross(roundId, player.id, hole.number);
   const strokes = strokesOnHole(handicapValue, hole.strokeIndex);
@@ -1957,7 +2047,31 @@ function renderHoleInput(roundId, player, course, hole, handicapValue) {
       </div>
       <div class="hole-actions">
         <input class="hole-input" type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="off" enterkeyhint="next" value="${gross}" data-score="${roundId}:${player.id}:${hole.number}" aria-label="Score trou ${hole.number}" />
-        <button class="btn ${validated ? "" : "primary"}" data-validate-hole="${roundId}::${hole.number}">${validated ? "Revalider" : "Valider"}</button>
+        <span class="tag ${validated ? "green" : "blue"}">${validated ? "Enregistré" : "Auto"}</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderGroupScoreSummary(roundId, course, players) {
+  return `
+    <div class="group-score-summary">
+      <div class="summary-title">Carte de score de la partie</div>
+      <div class="summary-grid">
+        ${players.map((player) => {
+          const stats = playerRoundStats(player, roundId);
+          const putting = grossSouterrainesStats(player, [roundId]);
+          return `
+            <div class="summary-player">
+              <strong>${player.name}</strong>
+              <span>${stats.handicapValue} coups rendus</span>
+              <span>${stats.holesPlayed}/${course.holes.length} trous</span>
+              <span>Brut ${stats.grossTotal || "-"}</span>
+              <span>${stats.points} pts</span>
+              <span>Putts ${putting.puttHoles ? putting.puttsTotal : "-"}</span>
+            </div>
+          `;
+        }).join("")}
       </div>
     </div>
   `;
@@ -1979,14 +2093,12 @@ function renderGroupScoreGrid(roundId, course, players) {
               const stats = playerRoundStats(player, roundId);
               return `<th colspan="2"><span>${player.name}</span><small>${stats.tee.label} · ${stats.handicapValue} CR</small></th>`;
             }).join("")}
-            <th>Validation</th>
           </tr>
           <tr>
             <th></th>
             <th></th>
             <th></th>
             ${players.map(() => `<th>Score</th><th>P</th>`).join("")}
-            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -2019,11 +2131,6 @@ function renderGroupScoreGrid(roundId, course, players) {
                   </td>
                 `;
               }).join("")}
-              <td>
-                <button class="btn ${isHoleValidated(roundId, state.selectedGroupId, hole.number) ? "" : "primary"}" data-validate-hole="${roundId}:${state.selectedGroupId}:${hole.number}" data-grid-validate="${hole.number}">
-                  ${isHoleValidated(roundId, state.selectedGroupId, hole.number) ? "Validé" : "Valider"}
-                </button>
-              </td>
             </tr>
           `).join("")}
         </tbody>
@@ -2074,9 +2181,7 @@ function renderMobileHoleEntry(roundId, course, players) {
         }).join("")}
       </div>
       ${renderMobileKeypad()}
-      <button class="btn primary mobile-validate" data-validate-hole="${roundId}:${state.selectedGroupId}:${hole.number}" ${complete ? "" : "disabled"}>
-        Valider le trou ${hole.number}
-      </button>
+      <div class="auto-save-note">${complete ? "Trou enregistré automatiquement" : "Le trou s'enregistre automatiquement quand les scores sont saisis"}</div>
     </div>
   `;
 }
@@ -2989,6 +3094,10 @@ function bindEvents() {
 
   const reset = document.querySelector('[data-action="reset-scores"]');
   if (reset) reset.addEventListener("click", resetScores);
+
+  document.querySelectorAll('[data-action="export-scores"]').forEach((button) => {
+    button.addEventListener("click", exportScoresCsv);
+  });
 
   document.querySelectorAll("[data-import-scores]").forEach((input) => {
     input.addEventListener("change", () => {
