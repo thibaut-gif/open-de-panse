@@ -327,7 +327,27 @@ function mergeUniqueNotifications(localItems = [], remoteItems = []) {
     const useItem = itemCount > existingCount || (itemCount === existingCount && (item.popupVersion || 0) > (existing.popupVersion || 0));
     if (useItem) byKey.set(key, item);
   });
-  return [...byKey.values()].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  return sortNotifications([...byKey.values()]);
+}
+
+function notificationTimestamp(item) {
+  return Number(item.createdAtMs || item.updatedAtMs || 0);
+}
+
+function sortNotifications(items = []) {
+  return [...items].sort((a, b) => notificationTimestamp(b) - notificationTimestamp(a));
+}
+
+function newestNotification() {
+  return sortNotifications(state.notifications || [])[0] || null;
+}
+
+function notificationDate() {
+  const now = Date.now();
+  return {
+    createdAt: new Date(now).toLocaleString("fr-FR"),
+    createdAtMs: now,
+  };
 }
 
 function applyRemoteState(data) {
@@ -820,11 +840,12 @@ function maybeNotifyUnderPar(roundId, playerId, holeNumber, gross) {
     existing.playerId = existing.playerIds[0];
     existing.type = alertPriority(type) > alertPriority(existing.type) ? type : existing.type;
     existing.message = notificationMessage(existing.players, groupName, holeNumber, existing.type);
-    existing.createdAt = new Date().toLocaleString("fr-FR");
+    Object.assign(existing, notificationDate());
     existing.popupVersion = (existing.popupVersion || 1) + 1;
-    state.notifications = [existing, ...state.notifications.filter((item) => item !== existing)];
+    state.notifications = sortNotifications([existing, ...state.notifications.filter((item) => item !== existing)]);
     return;
   }
+  const notificationTime = notificationDate();
   state.notifications.unshift({
     id: alertKey,
     alertKey,
@@ -838,8 +859,9 @@ function maybeNotifyUnderPar(roundId, playerId, holeNumber, gross) {
     popupVersion: 1,
     message: notificationMessage([player.name], groupName, holeNumber, type),
     detail: `Tour ${round.number} - ${course.name}`,
-    createdAt: new Date().toLocaleString("fr-FR"),
+    ...notificationTime,
   });
+  state.notifications = sortNotifications(state.notifications);
 }
 
 function alertPriority(type) {
@@ -875,6 +897,7 @@ function maybeNotifyFireStreak(roundId, playerId, holeNumber) {
   const group = groupForPlayer(roundId, playerId);
   const alertKey = `fire:${roundId}:${playerId}:${holeNumber}`;
   if (state.notifications.some((item) => item.alertKey === alertKey)) return;
+  const notificationTime = notificationDate();
   state.notifications.unshift({
     id: alertKey,
     alertKey,
@@ -888,8 +911,9 @@ function maybeNotifyFireStreak(roundId, playerId, holeNumber) {
     popupVersion: 1,
     message: `🔥 ${player.name} est on fire`,
     detail: `Tour ${round.number} - ${course.name} · ${streak.total} pts Stableford sur ${streak.length} trous d'affilée · dernier trou ${holeNumber}`,
-    createdAt: new Date().toLocaleString("fr-FR"),
+    ...notificationTime,
   });
+  state.notifications = sortNotifications(state.notifications);
 }
 
 function labelForUnderPar(type) {
@@ -1053,7 +1077,7 @@ function render() {
 }
 
 function latestPopupAlert() {
-  const latest = state.notifications?.[0];
+  const latest = newestNotification();
   if (!latest) return null;
   const id = `${latest.alertKey || latest.id || `${latest.roundId}:${latest.playerId}:${latest.holeNumber}:${latest.type}`}:${latest.popupVersion || latest.playerIds?.length || 1}`;
   if (!id || id === lastAlertPopupId || state.activeView === "notifications") return null;
@@ -1329,7 +1353,7 @@ function renderTabs() {
 
 function renderHome() {
   const cumulative = sortedLeaderboard("cumulative");
-  const latestAlert = state.notifications[0];
+  const latestAlert = newestNotification();
   return `
     ${latestAlert ? `
       <div class="alert-banner">
@@ -1385,7 +1409,7 @@ function renderHome() {
         <span class="tag gold">${state.notifications.length}</span>
       </div>
       <div class="panel-body cards">
-        ${state.notifications.length ? state.notifications.slice(0, 4).map((item) => `
+        ${state.notifications.length ? sortNotifications(state.notifications).slice(0, 4).map((item) => `
           <div class="notification highlight">
             <div class="card-top">
               <div>
@@ -2834,6 +2858,7 @@ function renderGroupCard(group, index) {
 }
 
 function renderNotifications() {
+  const notifications = sortNotifications(state.notifications);
   return `
     <div class="panel">
       <div class="panel-header">
@@ -2843,7 +2868,7 @@ function renderNotifications() {
         </div>
       </div>
       <div class="panel-body cards">
-        ${state.notifications.length ? state.notifications.map((item) => `
+        ${notifications.length ? notifications.map((item) => `
           <div class="notification">
             <div class="card-top">
               <div>
@@ -3042,7 +3067,7 @@ function bindEvents() {
 
   document.querySelectorAll('[data-action="dismiss-shot-popup"]').forEach((button) => {
     button.addEventListener("click", () => {
-      const latest = state.notifications?.[0];
+      const latest = newestNotification();
       lastAlertPopupId = latest ? `${latest.alertKey || latest.id || `${latest.roundId}:${latest.playerId}:${latest.holeNumber}:${latest.type}`}:${latest.popupVersion || latest.playerIds?.length || 1}` : "";
       if (lastAlertPopupId) localStorage.setItem(ALERT_POPUP_KEY, lastAlertPopupId);
       render();
