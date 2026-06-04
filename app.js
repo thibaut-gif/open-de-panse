@@ -620,6 +620,10 @@ function setGross(roundId, playerId, holeNumber, value, options = {}) {
   } else {
     state.scores[key] = nextValue;
   }
+  if (state.scores[key]) {
+    maybeNotifyUnderPar(roundId, playerId, holeNumber, state.scores[key]);
+    maybeNotifyFireStreak(roundId, playerId, holeNumber);
+  }
   if (options.localOnly) {
     saveLocalOnly();
     scheduleRemoteSave();
@@ -796,8 +800,13 @@ function maybeNotifyUnderPar(roundId, playerId, holeNumber, gross) {
   const group = groupForPlayer(roundId, playerId);
   const groupName = group?.name || "Partie non définie";
   const alertKey = `${roundId}:${group?.id || "no-group"}:${holeNumber}`;
-  const existing = state.notifications.find((item) => item.alertKey === alertKey || (
-    item.roundId === roundId && item.holeNumber === holeNumber && (item.groupName || "Partie non définie") === groupName
+  const existing = state.notifications.find((item) => (
+    item.type !== "fire" &&
+    (item.alertKey === alertKey || (
+      item.roundId === roundId &&
+      item.holeNumber === holeNumber &&
+      (item.groupName || "Partie non définie") === groupName
+    ))
   ));
   if (existing) {
     const existingPlayerIds = existing.playerIds?.length ? existing.playerIds : [existing.playerId].filter(Boolean);
@@ -849,15 +858,20 @@ function maybeNotifyFireStreak(roundId, playerId, holeNumber) {
   const round = state.rounds.find((item) => item.id === roundId);
   if (!course || !player || !round) return;
   const handicapValue = courseHandicap({ ...player, handicap: handicapBeforeRound(player, roundId) }, course);
-  let streak = 0;
-  for (let number = holeNumber; number >= 1; number -= 1) {
-    const hole = course.holes.find((item) => item.number === number);
-    const gross = getGross(roundId, playerId, number);
-    const points = hole ? stablefordPoints(hole.par, gross, strokesOnHole(handicapValue, hole.strokeIndex)) : null;
-    if (points === null || points < 3) break;
-    streak += 1;
-  }
-  if (streak < 3) return;
+  const candidates = [2, 3].map((length) => {
+    const points = [];
+    for (let number = holeNumber - length + 1; number <= holeNumber; number += 1) {
+      const hole = course.holes.find((item) => item.number === number);
+      const gross = hole ? getGross(roundId, playerId, number) : "";
+      const value = hole ? stablefordPoints(hole.par, gross, strokesOnHole(handicapValue, hole.strokeIndex)) : null;
+      if (value === null || value < 3) return null;
+      points.push(value);
+    }
+    const total = points.reduce((sum, value) => sum + value, 0);
+    return total >= 9 ? { length, total } : null;
+  }).filter(Boolean);
+  const streak = candidates.sort((a, b) => b.total - a.total || b.length - a.length)[0];
+  if (!streak) return;
   const group = groupForPlayer(roundId, playerId);
   const alertKey = `fire:${roundId}:${playerId}:${holeNumber}`;
   if (state.notifications.some((item) => item.alertKey === alertKey)) return;
@@ -873,7 +887,7 @@ function maybeNotifyFireStreak(roundId, playerId, holeNumber) {
     groupName: group?.name || "Partie non définie",
     popupVersion: 1,
     message: `🔥 ${player.name} est on fire`,
-    detail: `Tour ${round.number} - ${course.name} · ${streak} trous d'affilée à 3 pts ou plus · dernier trou ${holeNumber}`,
+    detail: `Tour ${round.number} - ${course.name} · ${streak.total} pts Stableford sur ${streak.length} trous d'affilée · dernier trou ${holeNumber}`,
     createdAt: new Date().toLocaleString("fr-FR"),
   });
 }
@@ -2100,6 +2114,7 @@ function validateImportedRound(roundId) {
       state.validatedHoles[holeValidationKey(roundId, group.id, hole.number)] = true;
       players.forEach((player) => {
         maybeNotifyUnderPar(roundId, player.id, hole.number, getGross(roundId, player.id, hole.number));
+        maybeNotifyFireStreak(roundId, player.id, hole.number);
       });
     });
   });
