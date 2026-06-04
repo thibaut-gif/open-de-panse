@@ -2,7 +2,6 @@ const STORAGE_KEY = "open-de-panse-mvp-state-v3";
 const AUTH_KEY = "open-de-panse-auth-v1";
 const ROLE_KEY = "open-de-panse-role-v1";
 const PLAYER_KEY = "open-de-panse-player-v1";
-const ALERT_POPUP_KEY = "open-de-panse-last-alert-popup-v1";
 const PARTICIPANT_PASSWORD = "panse2026";
 const ADMIN_PASSWORD = "panseadmin2026";
 const CLIENT_ID_KEY = "open-de-panse-client-id-v1";
@@ -169,7 +168,8 @@ let isApplyingRemote = false;
 let syncTimer = null;
 let remotePollTimer = null;
 let remoteLastSeenAt = 0;
-let lastAlertPopupId = localStorage.getItem(ALERT_POPUP_KEY) || "";
+let lastAlertPopupId = "";
+let resumeSyncTimer = null;
 const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY);
 const clientId = getClientId();
 
@@ -1080,7 +1080,7 @@ function latestPopupAlert() {
   const latest = newestNotification();
   if (!latest) return null;
   const id = `${latest.alertKey || latest.id || `${latest.roundId}:${latest.playerId}:${latest.holeNumber}:${latest.type}`}:${latest.popupVersion || latest.playerIds?.length || 1}`;
-  if (!id || id === lastAlertPopupId || state.activeView === "notifications") return null;
+  if (!id || id === lastAlertPopupId) return null;
   return { ...latest, popupId: id };
 }
 
@@ -1307,6 +1307,16 @@ async function startRemoteSync() {
   subscribeRemoteState();
   startRemotePolling();
   render();
+}
+
+function refreshOnAppResume() {
+  if (!isAuthenticated) return;
+  lastAlertPopupId = "";
+  clearTimeout(resumeSyncTimer);
+  resumeSyncTimer = setTimeout(async () => {
+    await loadRemoteState();
+    render();
+  }, 150);
 }
 
 function renderTopbar() {
@@ -3069,7 +3079,6 @@ function bindEvents() {
     button.addEventListener("click", () => {
       const latest = newestNotification();
       lastAlertPopupId = latest ? `${latest.alertKey || latest.id || `${latest.roundId}:${latest.playerId}:${latest.holeNumber}:${latest.type}`}:${latest.popupVersion || latest.playerIds?.length || 1}` : "";
-      if (lastAlertPopupId) localStorage.setItem(ALERT_POPUP_KEY, lastAlertPopupId);
       render();
     });
   });
@@ -3430,4 +3439,8 @@ function bindEvents() {
 if (isAuthenticated) {
   startRemoteSync();
 }
+window.addEventListener("focus", refreshOnAppResume);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refreshOnAppResume();
+});
 render();
