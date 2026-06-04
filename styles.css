@@ -1681,6 +1681,73 @@ button {
   text-align: center;
 }
 
+.shot-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(7, 23, 16, 0.45);
+}
+
+.shot-popup {
+  position: relative;
+  width: min(440px, 100%);
+  padding: 22px;
+  border: 2px solid var(--gold);
+  border-radius: 8px;
+  background: #fff7df;
+  box-shadow: 0 22px 55px rgba(7, 23, 16, 0.28);
+  color: var(--ink);
+}
+
+.shot-popup-kicker {
+  margin-bottom: 8px;
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shot-popup h3 {
+  margin: 0 28px 8px 0;
+  font-size: 26px;
+  line-height: 1.05;
+}
+
+.shot-popup p {
+  margin: 0 0 14px;
+  color: #614711;
+  font-weight: 800;
+}
+
+.shot-popup-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.shot-popup-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #e6c56b;
+  border-radius: 999px;
+  background: white;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 900;
+}
+
 @media (max-width: 820px) {
   .tabs {
     display: flex;

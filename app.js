@@ -2,6 +2,7 @@ const STORAGE_KEY = "open-de-panse-mvp-state-v3";
 const AUTH_KEY = "open-de-panse-auth-v1";
 const ROLE_KEY = "open-de-panse-role-v1";
 const PLAYER_KEY = "open-de-panse-player-v1";
+const ALERT_POPUP_KEY = "open-de-panse-last-alert-popup-v1";
 const PARTICIPANT_PASSWORD = "panse2026";
 const ADMIN_PASSWORD = "panseadmin2026";
 const CLIENT_ID_KEY = "open-de-panse-client-id-v1";
@@ -168,6 +169,7 @@ let isApplyingRemote = false;
 let syncTimer = null;
 let remotePollTimer = null;
 let remoteLastSeenAt = 0;
+let lastAlertPopupId = localStorage.getItem(ALERT_POPUP_KEY) || "";
 const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY);
 const clientId = getClientId();
 
@@ -227,7 +229,9 @@ function createInitialState() {
     players: normalizePlayers(playersSeed),
     groups: createInitialGroups(),
     scores: {},
+    scoresUpdatedAt: {},
     putts: {},
+    puttsUpdatedAt: {},
     validatedHoles: {},
     notifications: [],
     validatedRounds: {},
@@ -271,7 +275,9 @@ function publicState() {
     players: state.players,
     groups: state.groups,
     scores: state.scores,
+    scoresUpdatedAt: state.scoresUpdatedAt,
     putts: state.putts,
+    puttsUpdatedAt: state.puttsUpdatedAt,
     validatedHoles: state.validatedHoles,
     notifications: state.notifications,
     validatedRounds: state.validatedRounds,
@@ -279,15 +285,76 @@ function publicState() {
   };
 }
 
+function mergeTimestampedMap(localMap = {}, remoteMap = {}, localMeta = {}, remoteMeta = {}) {
+  const merged = {};
+  const mergedMeta = {};
+  const keys = new Set([...Object.keys(localMap || {}), ...Object.keys(remoteMap || {})]);
+  keys.forEach((key) => {
+    const hasLocal = Object.prototype.hasOwnProperty.call(localMap || {}, key);
+    const hasRemote = Object.prototype.hasOwnProperty.call(remoteMap || {}, key);
+    const localTime = Number(localMeta?.[key] || 0);
+    const remoteTime = Number(remoteMeta?.[key] || 0);
+    if (hasLocal && hasRemote) {
+      const useRemote = remoteTime > localTime;
+      merged[key] = useRemote ? remoteMap[key] : localMap[key];
+      mergedMeta[key] = Math.max(localTime, remoteTime);
+      return;
+    }
+    if (hasRemote) {
+      merged[key] = remoteMap[key];
+      mergedMeta[key] = remoteTime;
+      return;
+    }
+    if (hasLocal) {
+      merged[key] = localMap[key];
+      mergedMeta[key] = localTime;
+    }
+  });
+  return { values: merged, meta: mergedMeta };
+}
+
+function mergeUniqueNotifications(localItems = [], remoteItems = []) {
+  const byKey = new Map();
+  [...remoteItems, ...localItems].forEach((item) => {
+    const key = item.id || `${item.roundId}:${item.playerId}:${item.holeNumber}:${item.type}`;
+    if (!byKey.has(key)) byKey.set(key, item);
+  });
+  return [...byKey.values()].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
 function applyRemoteState(data) {
   if (!data || typeof data !== "object") return;
   const incomingUpdatedAt = Number(data.syncUpdatedAt || 0);
   if (incomingUpdatedAt && incomingUpdatedAt <= remoteLastSeenAt) return;
   if (incomingUpdatedAt) remoteLastSeenAt = incomingUpdatedAt;
+  const localScores = state.scores || {};
+  const localScoresUpdatedAt = state.scoresUpdatedAt || {};
+  const localPutts = state.putts || {};
+  const localPuttsUpdatedAt = state.puttsUpdatedAt || {};
+  const localValidatedHoles = state.validatedHoles || {};
+  const localValidatedRounds = state.validatedRounds || {};
+  const localNotifications = state.notifications || [];
+  const mergedScores = mergeTimestampedMap(localScores, data.scores || {}, localScoresUpdatedAt, data.scoresUpdatedAt || {});
+  const mergedPutts = mergeTimestampedMap(localPutts, data.putts || {}, localPuttsUpdatedAt, data.puttsUpdatedAt || {});
+  const mergedValidatedHoles = { ...(data.validatedHoles || {}), ...localValidatedHoles };
+  const mergedValidatedRounds = { ...(data.validatedRounds || {}), ...localValidatedRounds };
+  const mergedNotifications = mergeUniqueNotifications(localNotifications, data.notifications || []);
+  const needsRemoteRepair =
+    Object.keys(mergedScores.values).length !== Object.keys(data.scores || {}).length ||
+    Object.keys(mergedPutts.values).length !== Object.keys(data.putts || {}).length ||
+    Object.keys(mergedValidatedHoles).length !== Object.keys(data.validatedHoles || {}).length ||
+    mergedNotifications.length !== (data.notifications || []).length;
   isApplyingRemote = true;
   state = {
     ...state,
     ...data,
+    scores: mergedScores.values,
+    scoresUpdatedAt: mergedScores.meta,
+    putts: mergedPutts.values,
+    puttsUpdatedAt: mergedPutts.meta,
+    validatedHoles: mergedValidatedHoles,
+    validatedRounds: mergedValidatedRounds,
+    notifications: mergedNotifications,
     activeView: state.activeView,
     selectedRoundId: state.selectedRoundId,
     selectedGroupId: state.selectedGroupId,
@@ -310,6 +377,7 @@ function applyRemoteState(data) {
   saveLocalOnly();
   isApplyingRemote = false;
   render();
+  if (needsRemoteRepair) scheduleRemoteSave();
 }
 
 function scheduleRemoteSave() {
@@ -321,7 +389,6 @@ function scheduleRemoteSave() {
 async function saveRemoteState() {
   if (!supabaseClient || isApplyingRemote || !isAuthenticated) return;
   const payload = publicState();
-  remoteLastSeenAt = payload.syncUpdatedAt;
   const { error } = await supabaseClient
     .from("app_state")
     .upsert({ id: SUPABASE_STATE_ID, data: payload });
@@ -332,6 +399,7 @@ async function saveRemoteState() {
     if (wasRemoteReady) render();
     return;
   }
+  remoteLastSeenAt = payload.syncUpdatedAt;
   const wasRemoteReady = remoteReady;
   remoteReady = true;
   if (!wasRemoteReady) render();
@@ -503,10 +571,12 @@ function getPutts(roundId, playerId, holeNumber) {
 
 function setPutts(roundId, playerId, holeNumber, value) {
   if (!state.putts) state.putts = {};
+  if (!state.puttsUpdatedAt) state.puttsUpdatedAt = {};
   const key = puttKey(roundId, playerId, holeNumber);
   const nextValue = Number(value);
+  state.puttsUpdatedAt[key] = Date.now();
   if (value === "" || value === null || value === undefined || Number.isNaN(nextValue) || nextValue < 0) {
-    delete state.putts[key];
+    state.putts[key] = "";
   } else {
     state.putts[key] = nextValue;
   }
@@ -522,7 +592,9 @@ function isHoleValidated(roundId, groupId, holeNumber) {
 }
 
 function setGross(roundId, playerId, holeNumber, value, options = {}) {
+  if (!state.scoresUpdatedAt) state.scoresUpdatedAt = {};
   const key = roundScoreKey(roundId, playerId, holeNumber);
+  state.scoresUpdatedAt[key] = Date.now();
   if (String(value).toUpperCase() === "X") {
     state.scores[key] = "X";
     if (options.localOnly) {
@@ -536,7 +608,7 @@ function setGross(roundId, playerId, holeNumber, value, options = {}) {
   }
   const nextValue = Number(value);
   if (!value || Number.isNaN(nextValue) || nextValue < 1) {
-    delete state.scores[key];
+    state.scores[key] = "";
   } else {
     state.scores[key] = nextValue;
   }
@@ -637,7 +709,10 @@ function abandonActiveHole() {
   if (!active) return;
   setGross(active.roundId, active.playerId, active.holeNumber, "X", { localOnly: true });
   if (!state.putts) state.putts = {};
-  delete state.putts[puttKey(active.roundId, active.playerId, active.holeNumber)];
+  if (!state.puttsUpdatedAt) state.puttsUpdatedAt = {};
+  const puttClearKey = puttKey(active.roundId, active.playerId, active.holeNumber);
+  state.putts[puttClearKey] = "";
+  state.puttsUpdatedAt[puttClearKey] = Date.now();
   const players = activeGroupPlayers();
   const currentIndex = players.findIndex((player) => player.id === active.playerId);
   const course = courseForRound(active.roundId);
@@ -872,10 +947,39 @@ function render() {
       <main class="container">
         <section class="view active">${renderActiveView()}</section>
       </main>
+      ${renderShotPopup()}
       ${renderTabs()}
     </div>
   `;
   bindEvents();
+}
+
+function latestPopupAlert() {
+  const latest = state.notifications?.[0];
+  if (!latest) return null;
+  const id = latest.id || `${latest.roundId}:${latest.playerId}:${latest.holeNumber}:${latest.type}`;
+  if (!id || id === lastAlertPopupId || state.activeView === "notifications") return null;
+  return { ...latest, popupId: id };
+}
+
+function renderShotPopup() {
+  const alert = latestPopupAlert();
+  if (!alert) return "";
+  return `
+    <div class="shot-popup-backdrop" data-shot-popup>
+      <div class="shot-popup" role="dialog" aria-modal="true" aria-label="Alerte shot">
+        <button class="shot-popup-close" data-action="dismiss-shot-popup" aria-label="Fermer">×</button>
+        <div class="shot-popup-kicker">Alerte shot</div>
+        <h3>${alert.message}</h3>
+        <p>${alert.detail}</p>
+        <div class="shot-popup-meta">
+          <span class="tag gold">${labelForUnderPar(alert.type)}</span>
+          <span>${alert.createdAt}</span>
+        </div>
+        <button class="btn primary" data-action="dismiss-shot-popup">Santé, bien reçu</button>
+      </div>
+    </div>
+  `;
 }
 
 function renderActiveView() {
@@ -2828,6 +2932,23 @@ function bindEvents() {
       clearInterval(remotePollTimer);
       clearTimeout(syncTimer);
       render();
+    });
+  });
+
+  document.querySelectorAll('[data-action="dismiss-shot-popup"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      const latest = state.notifications?.[0];
+      lastAlertPopupId = latest ? latest.id || `${latest.roundId}:${latest.playerId}:${latest.holeNumber}:${latest.type}` : "";
+      if (lastAlertPopupId) localStorage.setItem(ALERT_POPUP_KEY, lastAlertPopupId);
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-shot-popup]").forEach((backdrop) => {
+    backdrop.addEventListener("click", (event) => {
+      if (event.target !== backdrop) return;
+      const close = backdrop.querySelector('[data-action="dismiss-shot-popup"]');
+      close?.click();
     });
   });
 
