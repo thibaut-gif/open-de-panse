@@ -1748,6 +1748,74 @@ button {
   font-weight: 900;
 }
 
+.fire-popup {
+  width: min(520px, 100%);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  text-align: center;
+}
+
+.fire-popup .shot-popup-kicker {
+  color: #d94f14;
+}
+
+.fire-flame {
+  position: relative;
+  display: grid;
+  width: min(330px, 86vw);
+  height: min(330px, 86vw);
+  place-items: center;
+  margin: 0 auto 8px;
+  line-height: 1;
+  filter: drop-shadow(0 18px 28px rgba(217, 79, 20, 0.36));
+}
+
+.fire-flame-icon {
+  font-size: min(318px, 82vw);
+  line-height: 1;
+}
+
+.fire-flame-name {
+  position: absolute;
+  left: 50%;
+  top: 47%;
+  max-width: 250px;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: clamp(38px, 11vw, 60px);
+  font-weight: 950;
+  line-height: 1;
+  text-shadow: 0 3px 8px rgba(72, 17, 0, 0.95), 0 0 2px rgba(72, 17, 0, 0.9);
+  white-space: nowrap;
+}
+
+.fire-popup h3 {
+  margin-right: 0;
+  color: #42190a;
+  font-size: 34px;
+}
+
+.fire-popup p,
+.fire-popup .shot-popup-meta {
+  width: min(320px, 86vw);
+  margin-left: auto;
+  margin-right: auto;
+  padding: 10px 12px;
+  border: 1px solid #f06b21;
+  border-radius: 8px;
+  background: rgba(255, 240, 223, 0.96);
+}
+
+.fire-popup .shot-popup-meta {
+  justify-content: center;
+}
+
+.fire-popup .shot-popup-close {
+  top: 0;
+  right: 0;
+}
+
 @media (max-width: 820px) {
   .tabs {
     display: flex;

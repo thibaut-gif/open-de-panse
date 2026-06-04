@@ -778,7 +778,10 @@ function autoValidateHole(roundId, groupId, holeNumber, options = {}) {
   )));
   players.forEach((player) => {
     const gross = getGross(roundId, player.id, holeNumber);
-    if (gross) maybeNotifyUnderPar(roundId, player.id, holeNumber, gross);
+    if (gross) {
+      maybeNotifyUnderPar(roundId, player.id, holeNumber, gross);
+      maybeNotifyFireStreak(roundId, player.id, holeNumber);
+    }
   });
   return true;
 }
@@ -840,8 +843,44 @@ function notificationMessage(players, groupName, holeNumber, type) {
   return `${shot} pour ${names} · ${groupName} · trou ${holeNumber} · ${labelForUnderPar(type)} brut`;
 }
 
+function maybeNotifyFireStreak(roundId, playerId, holeNumber) {
+  const course = courseForRound(roundId);
+  const player = state.players.find((item) => item.id === playerId);
+  const round = state.rounds.find((item) => item.id === roundId);
+  if (!course || !player || !round) return;
+  const handicapValue = courseHandicap({ ...player, handicap: handicapBeforeRound(player, roundId) }, course);
+  let streak = 0;
+  for (let number = holeNumber; number >= 1; number -= 1) {
+    const hole = course.holes.find((item) => item.number === number);
+    const gross = getGross(roundId, playerId, number);
+    const points = hole ? stablefordPoints(hole.par, gross, strokesOnHole(handicapValue, hole.strokeIndex)) : null;
+    if (points === null || points < 3) break;
+    streak += 1;
+  }
+  if (streak < 3) return;
+  const group = groupForPlayer(roundId, playerId);
+  const alertKey = `fire:${roundId}:${playerId}:${holeNumber}`;
+  if (state.notifications.some((item) => item.alertKey === alertKey)) return;
+  state.notifications.unshift({
+    id: alertKey,
+    alertKey,
+    roundId,
+    playerId,
+    playerIds: [playerId],
+    players: [player.name],
+    holeNumber,
+    type: "fire",
+    groupName: group?.name || "Partie non définie",
+    popupVersion: 1,
+    message: `🔥 ${player.name} est on fire`,
+    detail: `Tour ${round.number} - ${course.name} · ${streak} trous d'affilée à 3 pts ou plus · dernier trou ${holeNumber}`,
+    createdAt: new Date().toLocaleString("fr-FR"),
+  });
+}
+
 function labelForUnderPar(type) {
   return {
+    fire: "On fire",
     birdie: "Birdie",
     eagle: "Eagle",
     albatros: "Albatros",
@@ -1010,18 +1049,24 @@ function latestPopupAlert() {
 function renderShotPopup() {
   const alert = latestPopupAlert();
   if (!alert) return "";
+  const isFire = alert.type === "fire";
   return `
     <div class="shot-popup-backdrop" data-shot-popup>
-      <div class="shot-popup" role="dialog" aria-modal="true" aria-label="Alerte shot">
+      <div class="shot-popup ${isFire ? "fire-popup" : ""}" role="dialog" aria-modal="true" aria-label="${isFire ? "Alerte on fire" : "Alerte shot"}">
         <button class="shot-popup-close" data-action="dismiss-shot-popup" aria-label="Fermer">×</button>
-        <div class="shot-popup-kicker">Alerte shot</div>
-        <h3>${alert.message}</h3>
+        <div class="shot-popup-kicker">${isFire ? "🔥 On fire" : "Alerte shot"}</div>
+        ${isFire ? `
+          <div class="fire-flame">
+            <span class="fire-flame-icon">🔥</span>
+            <span class="fire-flame-name">${alert.players?.[0] || playerName(alert.playerId) || alert.message}</span>
+          </div>
+        ` : `<h3>${alert.message}</h3>`}
         <p>${alert.detail}</p>
         <div class="shot-popup-meta">
           <span class="tag gold">${labelForUnderPar(alert.type)}</span>
           <span>${alert.createdAt}</span>
         </div>
-        <button class="btn primary" data-action="dismiss-shot-popup">Santé, bien reçu</button>
+        <button class="btn primary" data-action="dismiss-shot-popup">${isFire ? "Vu, il est chaud" : "Santé, bien reçu"}</button>
       </div>
     </div>
   `;
