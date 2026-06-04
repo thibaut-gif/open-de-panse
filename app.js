@@ -316,8 +316,16 @@ function mergeTimestampedMap(localMap = {}, remoteMap = {}, localMeta = {}, remo
 function mergeUniqueNotifications(localItems = [], remoteItems = []) {
   const byKey = new Map();
   [...remoteItems, ...localItems].forEach((item) => {
-    const key = item.id || `${item.roundId}:${item.playerId}:${item.holeNumber}:${item.type}`;
-    if (!byKey.has(key)) byKey.set(key, item);
+    const key = item.alertKey || item.id || `${item.roundId}:${item.playerId}:${item.holeNumber}:${item.type}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, item);
+      return;
+    }
+    const existingCount = existing.playerIds?.length || existing.players?.length || 1;
+    const itemCount = item.playerIds?.length || item.players?.length || 1;
+    const useItem = itemCount > existingCount || (itemCount === existingCount && (item.popupVersion || 0) > (existing.popupVersion || 0));
+    if (useItem) byKey.set(key, item);
   });
   return [...byKey.values()].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
@@ -740,6 +748,7 @@ function abandonActiveHole() {
 }
 
 function clearActiveScore() {
+  if (!isAdmin()) return requireAdminMessage();
   const active = state.activeScoreCell;
   if (!active) return;
   if ((active.kind || "score") === "putt") {
@@ -764,7 +773,9 @@ function autoValidateHole(roundId, groupId, holeNumber, options = {}) {
   if (!options.force && (!players.length || !players.every((player) => getGross(roundId, player.id, holeNumber)))) return false;
   state.validatedHoles[holeValidationKey(roundId, groupId, holeNumber)] = true;
   const playerIds = new Set(players.map((player) => player.id));
-  state.notifications = state.notifications.filter((item) => !(item.roundId === roundId && item.holeNumber === holeNumber && playerIds.has(item.playerId)));
+  state.notifications = state.notifications.filter((item) => !(item.roundId === roundId && item.holeNumber === holeNumber && (
+    playerIds.has(item.playerId) || (item.playerIds || []).some((playerId) => playerIds.has(playerId))
+  )));
   players.forEach((player) => {
     const gross = getGross(roundId, player.id, holeNumber);
     if (gross) maybeNotifyUnderPar(roundId, player.id, holeNumber, gross);
@@ -777,22 +788,56 @@ function maybeNotifyUnderPar(roundId, playerId, holeNumber, gross) {
   const hole = course.holes.find((item) => item.number === holeNumber);
   const type = underParType(hole.par, gross);
   if (!type) return;
-  const existing = state.notifications.some((item) => item.roundId === roundId && item.playerId === playerId && item.holeNumber === holeNumber);
-  if (existing) return;
   const player = state.players.find((item) => item.id === playerId);
   const round = state.rounds.find((item) => item.id === roundId);
   const group = groupForPlayer(roundId, playerId);
+  const groupName = group?.name || "Partie non définie";
+  const alertKey = `${roundId}:${group?.id || "no-group"}:${holeNumber}`;
+  const existing = state.notifications.find((item) => item.alertKey === alertKey || (
+    item.roundId === roundId && item.holeNumber === holeNumber && (item.groupName || "Partie non définie") === groupName
+  ));
+  if (existing) {
+    const existingPlayerIds = existing.playerIds?.length ? existing.playerIds : [existing.playerId].filter(Boolean);
+    const existingPlayers = existing.players?.length ? existing.players : existingPlayerIds.map(playerName).filter(Boolean);
+    if (existingPlayerIds.includes(playerId)) return;
+    existing.alertKey = alertKey;
+    existing.id = alertKey;
+    existing.groupName = groupName;
+    existing.playerIds = [...existingPlayerIds, playerId];
+    existing.players = [...existingPlayers, player.name];
+    existing.playerId = existing.playerIds[0];
+    existing.type = alertPriority(type) > alertPriority(existing.type) ? type : existing.type;
+    existing.message = notificationMessage(existing.players, groupName, holeNumber, existing.type);
+    existing.createdAt = new Date().toLocaleString("fr-FR");
+    existing.popupVersion = (existing.popupVersion || 1) + 1;
+    state.notifications = [existing, ...state.notifications.filter((item) => item !== existing)];
+    return;
+  }
   state.notifications.unshift({
-    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    id: alertKey,
+    alertKey,
     roundId,
     playerId,
+    playerIds: [playerId],
+    players: [player.name],
     holeNumber,
     type,
-    groupName: group?.name || "Partie non définie",
-    message: `Shot pour ${player.name} · ${group?.name || "Partie non définie"} · trou ${holeNumber} · ${labelForUnderPar(type)} brut`,
+    groupName,
+    popupVersion: 1,
+    message: notificationMessage([player.name], groupName, holeNumber, type),
     detail: `Tour ${round.number} - ${course.name}`,
     createdAt: new Date().toLocaleString("fr-FR"),
   });
+}
+
+function alertPriority(type) {
+  return { birdie: 1, eagle: 2, albatros: 3, exceptionnel: 4 }[type] || 0;
+}
+
+function notificationMessage(players, groupName, holeNumber, type) {
+  const names = players.length > 1 ? players.slice(0, -1).join(", ") + " et " + players[players.length - 1] : players[0];
+  const shot = players.length > 1 ? "Shots" : "Shot";
+  return `${shot} pour ${names} · ${groupName} · trou ${holeNumber} · ${labelForUnderPar(type)} brut`;
 }
 
 function labelForUnderPar(type) {
@@ -957,7 +1002,7 @@ function render() {
 function latestPopupAlert() {
   const latest = state.notifications?.[0];
   if (!latest) return null;
-  const id = latest.id || `${latest.roundId}:${latest.playerId}:${latest.holeNumber}:${latest.type}`;
+  const id = `${latest.alertKey || latest.id || `${latest.roundId}:${latest.playerId}:${latest.holeNumber}:${latest.type}`}:${latest.popupVersion || latest.playerIds?.length || 1}`;
   if (!id || id === lastAlertPopupId || state.activeView === "notifications") return null;
   return { ...latest, popupId: id };
 }
@@ -2353,7 +2398,7 @@ function renderMobileKeypad() {
         <button class="keypad-key" data-keypad-score="${value}">${value}</button>
       `).join("")}
       <button class="keypad-key danger-key" data-keypad-abandon>X</button>
-      <button class="keypad-key muted" data-keypad-clear>Effacer</button>
+      ${isAdmin() ? `<button class="keypad-key muted" data-keypad-clear>Effacer</button>` : ""}
     </div>
   `;
 }
@@ -2367,7 +2412,7 @@ function renderFloatingKeypad() {
     <div class="score-keypad floating-keypad">
       <div class="keypad-status">
         <span class="tag blue">${label}</span>
-        <button class="btn" data-keypad-clear>Effacer</button>
+        ${isAdmin() ? `<button class="btn" data-keypad-clear>Effacer</button>` : ""}
       </div>
       <div class="keypad-grid">
         ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((value) => `
@@ -2938,7 +2983,7 @@ function bindEvents() {
   document.querySelectorAll('[data-action="dismiss-shot-popup"]').forEach((button) => {
     button.addEventListener("click", () => {
       const latest = state.notifications?.[0];
-      lastAlertPopupId = latest ? latest.id || `${latest.roundId}:${latest.playerId}:${latest.holeNumber}:${latest.type}` : "";
+      lastAlertPopupId = latest ? `${latest.alertKey || latest.id || `${latest.roundId}:${latest.playerId}:${latest.holeNumber}:${latest.type}`}:${latest.popupVersion || latest.playerIds?.length || 1}` : "";
       if (lastAlertPopupId) localStorage.setItem(ALERT_POPUP_KEY, lastAlertPopupId);
       render();
     });
